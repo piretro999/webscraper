@@ -46,12 +46,12 @@ if exist "config.json" (
     echo Copia config.json nella cartella di output...
     copy /Y "config.json" "%OUTPUT_DIR%\config.json" >nul
 ) else (
-    echo Nessun config.json trovato. Salto la copia.
+    echo No config.json found. I skip the copy.
 )
 
 for %%F in ("%OUTPUT_DIR%\webscraper.exe") do set SIZE=%%~zF
 set /a SIZE_MB=%SIZE%/1024/1024
-echo === Dimensione finale dell'eseguibile: %SIZE_MB% MB
+echo === EXE Final dimension: %SIZE_MB% MB
 
 echo ============================================
 echo === DONE. Executable created in: %OUTPUT_DIR%
