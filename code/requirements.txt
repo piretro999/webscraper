@@ -1,0 +1,8 @@
+selenium
+psutil
+imageio
+Pillow
+tkinterdnd2
+beautifulsoup4
+python-dateutil
+webdriver-manager
