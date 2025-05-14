@@ -63,6 +63,7 @@ https://1drv.ms/u/c/f8709043f1d7bc46/EXPXitmpmH9MnNc4DL7x4TsBpcmTM7HqOpcP3X3UCAS
 
 - Python 3.9+
 - Google Chrome installed
+- Chromedriver in the same directory of the exe or .py. (often to be updated when a new chrome update is installed)
 - Matching `chromedriver.exe`
 - Python dependencies:
   - `selenium`, `psutil`, `imageio`, `Pillow`, `tkinterdnd2`, `bs4`, `python-dateutil`
