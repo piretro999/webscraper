@@ -1,0 +1,191 @@
+{
+    "csv_path": "E:/AI/pythonscript/cercasiti/output_prova.csv",
+    "html_save_path": "E:/AI/pythonscript/cercasiti/output",
+    "output_csv_path": "",
+    "timeout": 0,
+    "language": "en",
+    "filter_countries": [],
+    "save_format": "pdf",
+    "enable_logs": true,
+    "log_file": "process_log.txt",
+    "debug_mode": false,
+    "notification": true,
+    "chrome_path": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "sites": {
+        "ec.europa.eu": {
+            "update_method": "date",
+            "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
+            "date_format": "%b %d, %Y %H:%M",
+            "language": "en",
+            "prefix_to_remove": "",
+			"month_translations": {
+				"gen": "Jan", "feb": "Feb", "mar": "Mar", "apr": "Apr",
+				"mag": "May", "giu": "Jun", "lug": "Jul", "ago": "Aug",
+				"set": "Sep", "ott": "Oct", "nov": "Nov", "dic": "Dec"
+			},
+			"day_translations": {
+				"lunedì": "Monday", "martedì": "Tuesday", "mercoledì": "Wednesday",
+				"giovedì": "Thursday", "venerdì": "Friday", "sabato": "Saturday", "domenica": "Sunday"
+			},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "theinvoicinghub.com": {
+            "update_method": "date",
+            "date_selector": "//p[contains(@class, 'elementor-heading-title') and contains(text(), 'Last update:')]",
+            "date_format": "%Y, %B %d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "example.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='last-updated']",
+            "date_format": "%b %d, %Y",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "othersite.com": {
+            "update_method": "date",
+            "date_selector": "//div[@id='update-date']",
+            "date_format": "%d/%m/%Y",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "somethingwith.translateddays.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
+            "date_format": "%A, %d %b, %Y %H:%M",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "qualcosasenzaTRADUZIONIgiorni.com": {
+            "update_method": "date",
+            "date_selector": "//p[contains(@class, 'elementor-heading-title') and contains(text(), 'Last update:')]",
+            "date_format": "%A, %Y, %B %d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "generic": {
+            "update_method": "date",
+            "date_selector": "",
+            "date_format": "",
+            "language": "",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "somethiing.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
+            "date_format": "%b %d, %Y %H:%M",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "vatupdate.com": {
+            "update_method": "date",
+            "date_selector": "//tbody/tr/td[strong[contains(text(), 'Latest update')]]/following-sibling::td",
+            "date_format": "%d.%m.%Y",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "pagero.com": {
+            "update_method": "date",
+            "date_selector": "//div[contains(@class, 'sc-5925bdbd-0') and contains(@class, 'bold') and contains(@class, 'date')]",
+            "date_format": "%Y-%m-%d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "fnfe-mpe.org": {
+            "update_method": "date",
+            "date_selector": "//*[contains(text(), 'Applicable à compter du')]",
+            "date_format": "%d %b %Y",
+            "language": "fr",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "www.impots.gouv.fr/specifications-externes-b2b": {
+            "update_method": "date",
+            "date_selector": "//example/xpath",
+            "date_format": "%Y-%m-%d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "mfinante.gov.ro/ro/web/efactura/informatii-tehnice": {
+            "update_method": "date",
+            "date_selector": "//example/xpath",
+            "date_format": "%Y-%m-%d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "siav.com": {
+            "update_method": "detection",
+            "date_selector": "//example/xpath",
+            "date_format": "%Y-%m-%d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "both",
+            "detection_threshold": 0.9
+        },
+        "ivalua.com": {
+            "update_method": "detection",
+            "date_selector": "//example/xpath",
+            "date_format": "%Y-%m-%d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "hash",
+            "detection_threshold": 0.9
+        }
+    },
+    "log_level": "DEBUG",
+    "force_download": false,
+    "use_debug_mode": true
+}
