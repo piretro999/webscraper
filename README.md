@@ -101,6 +101,7 @@ python traduzioneJson.py
 📄 webscraper_icon.ico    # icon for compiling
 📄 webscraper_icon.ico    # Original icon png
 📄 webscraper_leggero.bat # Batch to create an exe file. you need appropriate include
+📄 requirements.txt       # requirements to make the script work into a python environment
 ```
 
 ---
