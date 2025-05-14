@@ -90,12 +90,17 @@ python traduzioneJson.py
 ## 🗂️ Project Structure
 
 ```
-📁 output/             # PDF and CSV output
-📁 log/                # Log files
-📄 config.json         # Scraper configuration
-📄 locales.json        # UI translations
-📄 webscraper_NEW.py   # Main scraping application
-📄 traduzioneJson.py   # JSON localization editor
+📁 output/                # PDF and CSV output
+📁 log/                   # Log files
+📁 semantics/             # semantic txt file for version comparaison
+📄 config.json            # Scraper configuration
+📄 locales.json           # UI translations
+📄 webscraper_NEW.py      # Main scraping application
+📄 traduzioneJson.py      # JSON localization editor
+📄 webscraperRobot.mp4    # Just a funny video running in Tab 2 while working.
+📄 webscraper_icon.ico    # icon for compiling
+📄 webscraper_icon.ico    # Original icon png
+📄 webscraper_leggero.bat # Batch to create an exe file. you need appropriate include
 ```
 
 ---
