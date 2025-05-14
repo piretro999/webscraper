@@ -14,9 +14,9 @@ Includes a GUI-based JSON editor to manage the multilingual interface via `local
 ### 🕸 Web Update Monitor
 - Reads list of URLs from a CSV file
 - Detects updates using:
-  - 📅 **Date extraction** from specific HTML elements (XPath + formatting rules)
-  - 🔁 **Hash comparison** to detect structural changes
-  - 🧠 **Semantic similarity** to detect content changes
+  -  **Date extraction** from specific HTML elements (XPath + formatting rules)
+  -  **Hash comparison** to detect structural changes
+  -  **Semantic similarity** to detect content changes
 - Automatically downloads a PDF snapshot when changes are detected
 - Saves structured CSV logs (output and errors)
 - Chrome Debug mode supported
@@ -55,6 +55,10 @@ Configure site-specific detection methods, XPath selectors, formats, and thresho
 
 ---
 
+💾 Windows Executable available here (ZIP package):
+https://1drv.ms/u/c/f8709043f1d7bc46/EXPXitmpmH9MnNc4DL7x4TsBpcmTM7HqOpcP3X3UCAS1ow?e=VbcOJz
+
+
 ## 📦 Requirements
 
 - Python 3.9+
@@ -92,7 +96,7 @@ python traduzioneJson.py
 ```
 📁 output/                # PDF and CSV output
 📁 log/                   # Log files
-📁 semantics/             # semantic txt file for version comparaison
+📁 semantics/             # semantic txt files for version comparaison will be created here
 📄 config.json            # Scraper configuration
 📄 locales.json           # UI translations
 📄 webscraper_NEW.py      # Main scraping application
