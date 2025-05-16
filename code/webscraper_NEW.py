@@ -79,6 +79,15 @@ config = load_config()  # Assicurati che questa funzione sia definita altrove ne
 locale = load_locale(config.get("language", "en"))
 
 
+def sanitize_filename(name):
+    """
+    Rende sicuro un nome file rimuovendo o sostituendo caratteri non validi per il filesystem.
+    """
+    # Rimuove caratteri vietati da Windows: \ / : * ? " < > |
+    name = re.sub(r'[\\/*?:"<>|]', "_", name)
+    # Opzionale: rimuove anche caratteri Unicode di controllo
+    name = re.sub(r'[\x00-\x1f\x7f]', "", name)
+    return name.strip()
 
 
 
@@ -847,7 +856,7 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
                 else:
                     try:
                         new_date = extract_date(driver, site_config)
-                        if new_date in ["DATE_NOT_FOUND", "DATE_NOT_PARSED"]:
+                        if new_date in [locale.get("date_not_found", "DATE_NOT_FOUND"), locale.get("date_not_parsed", "DATE_NOT_PARSED")]:
                             raise ValueError(new_date)
                         new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
                         record["Data Ultimo Aggiornamento"] = new_date_str
@@ -1039,7 +1048,7 @@ def process_pages_OLD(config, progress_table, progress_bar, progress_count, paus
                 else:
                     try:
                         new_date = extract_date(driver, site_config)
-                        if new_date in ["DATE_NOT_FOUND", "DATE_NOT_PARSED"]:
+                        if new_date in [locale.get("date_not_found", "DATE_NOT_FOUND"), locale.get("date_not_parsed", "DATE_NOT_PARSED")]:
                             raise ValueError(new_date)
                         new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
                         row["Data Ultimo Aggiornamento"] = new_date_str
@@ -1368,11 +1377,12 @@ def extract_date(driver, site_config):
             element = driver.find_element("xpath", date_selector)
         except Exception as e:
             logging.warning(locale.get("element_not_found_for_selector_datesel", f"Element not found for selector {date_selector}: {e}"))
-            return "DATE_NOT_FOUND"
+            return locale.get("date_not_found", "DATE_NOT_FOUND")
 
         if not element:
             logging.warning(locale.get("no_element_found_for_selector_datesel", f"No element found for selector: {date_selector}"))
-            return "DATE_NOT_FOUND"
+            logging.warning(locale.get("date_not_found", "Date not found"))
+            return locale.get("date_not_found", "DATE_NOT_FOUND")
 
         date_text = element.text.strip()
         logging.info(locale.get("raw_date_text_datetext", f"Raw date text: {date_text}"))
@@ -1398,7 +1408,7 @@ def extract_date(driver, site_config):
             return parsed_date
         except Exception as e:
             logging.warning(locale.get("failed_to_parse_date_datetext_with", f"Failed to parse date '{date_text}' with format '{date_format}': {e}"))
-            return "DATE_NOT_PARSED"
+            return locale.get("date_not_parsed", "DATE_NOT_PARSED")
 
     except Exception as e:
         logging.error(locale.get("unexpected_error_extracting_date_e", f"Unexpected error extracting date: {e}"))
@@ -1505,21 +1515,11 @@ def update_progress(progress_bar, progress_count, completed, total):
 # Called by: __init__, save_debug_level, test_logging
 # Calls: [none]
 def configure_logging(log_level):
-    """
-    Function: configure_logging
-    Description: Function to configure logging.
-    Args:
-        log_level
-    Returns:
-        [None]
-    """
-    """
-    Configura il sistema di log in base al livello fornito.
-    Includi anche i log dettagliati di Selenium.
-    """
+    import os
     import logging
     from selenium.webdriver.remote.remote_connection import LOGGER as selenium_logger
 
+    # 🔧 Mappa livelli stringa → logging levels
     level_mapping = {
         "DEBUG": logging.DEBUG,
         "INFO": logging.INFO,
@@ -1528,27 +1528,38 @@ def configure_logging(log_level):
         "CRITICAL": logging.CRITICAL,
         "NONE": logging.CRITICAL + 1,
     }
-    desired_level = level_mapping.get(log_level.upper(), logging.INFO)
 
-    # Pulisce gestori esistenti
+    # ✅ Converte stringa in livello effettivo
+    desired_level = level_mapping.get(str(log_level).upper(), logging.INFO)
+
+    # 🔧 Crea directory 'log' se non esiste
+    log_dir = os.path.join(get_base_dir(), "log")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "selenium_debug.log")
+
+    # ❌ Rimuove gestori esistenti
     for handler in logging.root.handlers[:]:
-        handler.close()
         logging.root.removeHandler(handler)
+        try:
+            handler.close()
+        except Exception:
+            pass
 
-    # Configura i nuovi gestori
+    # ✅ Configura logging su file + console
     logging.basicConfig(
         level=desired_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(locale.get("selenium_debuglog", "selenium_debug.log")),
-            logging.StreamHandler(),
-        ],
+            logging.FileHandler(log_path, encoding="utf-8"),
+            logging.StreamHandler()
+        ]
     )
 
-    # Configura il logger di Selenium
+    # 🔧 Applica lo stesso livello ai logger di Selenium
     selenium_logger.setLevel(desired_level)
-    selenium_logger.addHandler(logging.StreamHandler())
 
+    logging.info(f"Logging configurato al livello: {logging.getLevelName(desired_level)}")
+    logging.info(f"Log file path: {log_path}")
 
 
 
@@ -1660,8 +1671,18 @@ class App:
         self.root = root
         self.config = load_config()
         self.locale = load_locale(self.config.get("language", "en"))
+    
+        # ✅ Estrae il livello di log come stringa
+        log_level = self.config.get("log_level", "DEBUG")
+        configure_logging(log_level)
+    
+        # 🔍 Test logging multilivello localizzato
+        logging.debug(self.locale.get("logging_configured_to_loglevel", "Log configurato al livello") + f": {log_level}")
+        logging.info(self.locale.get("test_info_log", "Questo è un log informativo"))
+        logging.warning(self.locale.get("test_warning_log", "Questo è un log di avviso"))
+        logging.error(self.locale.get("test_error_log", "Questo è un log di errore"))
+    
         self.language_var = tk.StringVar(value=self.config.get("language", "en"))
-
         # Istanza senza canvas inizialmente
         self.video_player = VideoPlayer(canvas=None, path="webscraperRobot.mp4")
 
@@ -1856,6 +1877,146 @@ class App:
         self.load_initial_csv()
 
     def reprocess_selected_row(self):
+        selected = self.progress_table.selection()
+        if not selected:
+            messagebox.showwarning(
+                self.locale.get("no_selection_title", "Nessuna selezione"),
+                self.locale.get("select_row_to_reprocess", "Seleziona almeno una riga da rielaborare nel Tab 2")
+            )
+            return
+    
+        from urllib.parse import urlparse
+        from selenium import webdriver
+        from selenium.webdriver.chrome.service import Service
+        from selenium.webdriver.chrome.options import Options
+    
+        for item_id in selected:
+            row_values = self.progress_table.item(item_id, "values")
+            record = {
+                "Url": row_values[0],
+                "Nome Nazione": row_values[1],
+                "Data Ultimo Aggiornamento": row_values[2]
+            }
+    
+            parsed_url = urlparse(record["Url"])
+            domain = parsed_url.netloc.replace("www.", "")
+            site_configs = load_config().get("sites", {})
+            site_config = site_configs.get(domain)
+    
+            if not site_config:
+                messagebox.showerror(
+                    self.locale.get("error", "Errore"),
+                    f"{self.locale.get('config_not_found_for_domain', 'Nessuna configurazione trovata per il dominio')}: {domain}"
+                )
+                continue
+    
+            try:
+                options = Options()
+                options.add_argument("--headless")
+                options.add_argument("--disable-gpu")
+                options.add_argument("--no-sandbox")
+                driver = webdriver.Chrome(
+                    service=Service(os.path.join(get_base_dir(), "chromedriver.exe")),
+                    options=options
+                )
+    
+                driver.get(record["Url"])
+                time.sleep(self.config.get("timeout", 5))
+    
+                status = ""
+                current_signature = record["Data Ultimo Aggiornamento"]
+    
+                if site_config.get("update_method", "date") == "detection":
+                    changed, new_signature, reason, similarity = detect_page_change(
+                        driver, site_config, current_signature
+                    )
+                    record["Data Ultimo Aggiornamento"] = new_signature
+                    if changed or self.force_download_var.get():
+                        pdf_filename = os.path.join(
+                            self.save_path_var.get(),
+                            sanitize_filename(f"{record['Nome Nazione']}_{domain}.pdf")
+                        )
+                        saved = save_page_as_pdf_with_selenium(
+                            record["Url"],
+                            pdf_filename,
+                            self.config["timeout"],
+                            self.config["log_file"]
+                        )
+                        status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
+                    else:
+                        status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
+    
+                else:
+                    new_date = extract_date(driver, site_config)
+                    if new_date in [
+                        self.locale.get("date_not_found", "DATE_NOT_FOUND"),
+                        self.locale.get("date_not_parsed", "DATE_NOT_PARSED")
+                    ]:
+                        status = self.locale.get("date_extraction_error", "Errore nella lettura della data")
+                    else:
+                        new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
+                        record["Data Ultimo Aggiornamento"] = new_date_str
+    
+                        if (new_date_str != current_signature) or self.force_download_var.get():
+                            pdf_filename = os.path.join(
+                                self.save_path_var.get(),
+                                sanitize_filename(f"{record['Nome Nazione']}_{domain}.pdf")
+                            )
+                            saved = save_page_as_pdf_with_selenium(
+                                record["Url"],
+                                pdf_filename,
+                                self.config["timeout"],
+                                self.config["log_file"]
+                            )
+                            status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
+                        else:
+                            status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
+    
+                driver.quit()
+    
+                # Aggiorna tabella GUI
+                self.progress_table.item(item_id, values=(
+                    record["Url"],
+                    record["Nome Nazione"],
+                    record["Data Ultimo Aggiornamento"],
+                    status
+                ))
+    
+                # Aggiorna CSV
+                output_dir = self.config.get("output_csv_path")
+                if output_dir and os.path.exists(output_dir):
+                    output_files = sorted(
+                        [f for f in os.listdir(output_dir) if f.startswith("output_") and f.endswith(".csv")],
+                        reverse=True
+                    )
+                    if output_files:
+                        output_path = os.path.join(output_dir, output_files[0])
+                        with open(output_path, "r", encoding="utf-8") as f:
+                            reader = list(csv.reader(f, delimiter=';'))
+                            headers = reader[0]
+                            rows = reader[1:]
+    
+                        url_index = headers.index(self.locale.get("url", "Url"))
+                        date_index = headers.index(self.locale.get("last_updated_date", "Data Ultimo Aggiornamento"))
+    
+                        for i, row in enumerate(rows):
+                            if row[url_index].strip() == record["Url"]:
+                                rows[i][date_index] = record["Data Ultimo Aggiornamento"]
+                                break
+    
+                        with open(output_path, "w", encoding="utf-8", newline="") as f:
+                            writer = csv.writer(f, delimiter=';')
+                            writer.writerow(headers)
+                            writer.writerows(rows)
+    
+            except Exception as e:
+                logging.error(f"Errore durante la rielaborazione per {record['Url']}: {e}")
+                messagebox.showerror(
+                    self.locale.get("error", "Errore"),
+                    f"{self.locale.get('error_during_process_e', 'Errore durante il processo')}: {e}"
+                )
+
+    def reprocess_selected_row_OLD(self):
         selected = self.progress_table.selection()
         if not selected:
             messagebox.showwarning("Nessuna selezione", "Seleziona una riga da rielaborare nel Tab 2")
