@@ -2406,7 +2406,71 @@ class App:
         save_config_to_file(config_data)
         messagebox.showinfo("Debug Level", f"Livello di debug salvato: {self.log_level_var.get()}")
 
+
     def edit_site_cell(self, event):
+        item_id = self.site_table.focus()
+        if not item_id:
+            return
+
+        col = self.site_table.identify_column(event.x)
+        col_index = int(col.replace("#", "")) - 1
+        values = list(self.site_table.item(item_id, "values"))
+
+        if col_index >= len(values):
+            return  # prevenzione IndexError
+
+        current_value = values[col_index]
+        x, y, width, height = self.site_table.bbox(item_id, col)
+
+        # Ottieni la chiave di localizzazione associata alla colonna
+        locale_keys = [
+            "site", "method", "selector", "date_format", "language",
+            "prefix", "month_translations", "day_translations", "detection_type", "threshold"
+        ]
+        if col_index >= len(locale_keys):
+            return
+
+        key = locale_keys[col_index]
+
+        # Combobox per le colonne a valori fissi
+        if key == "method":
+            combo = ttk.Combobox(self.site_table, values=["date", "detection"], state="readonly")
+        elif key == "detection_type":
+            combo = ttk.Combobox(self.site_table, values=["hash", "semantic", "both"], state="readonly")
+        else:
+            combo = None
+
+        if combo:
+            combo.set(current_value)
+            combo.place(x=x, y=y, width=width, height=height)
+            combo.focus_set()
+
+            def save_combo(event=None):
+                new_value = combo.get()
+                combo.destroy()
+                values[col_index] = new_value
+                self.site_table.item(item_id, values=values)
+
+            combo.bind("<<ComboboxSelected>>", save_combo)
+            combo.bind("<FocusOut>", save_combo)
+        else:
+            entry = tk.Entry(self.site_table)
+            entry.insert(0, current_value)
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.focus_set()
+
+            def save_edit(event=None):
+                new_value = entry.get()
+                entry.destroy()
+                values[col_index] = new_value
+                self.site_table.item(item_id, values=values)
+
+            entry.bind("<Return>", save_edit)
+            entry.bind("<FocusOut>", save_edit)
+
+
+
+    def edit_site_cell_OLD(self, event):
         item_id = self.site_table.focus()
         if not item_id:
             return
