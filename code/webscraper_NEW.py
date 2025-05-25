@@ -3,6 +3,7 @@ import os
 import csv
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 import subprocess
 import tkinter as tk
@@ -15,10 +16,85 @@ import psutil
 from webdriver_manager.chrome import ChromeDriverManager
 import sys
 import re
+from urllib.parse import urlparse
+import pikepdf
+import hashlib
+import difflib
+from bs4 import BeautifulSoup
+from dateutil.parser import parse as parse_date
+import base64
+import fitz  # PyMuPDF
+from PIL import Image
+import imageio
+from PIL import ImageTk
 AVAILABLE_LANGUAGES = ["it", "en", "fr", "de", "es", "sw"]
 
 # === Config ===
 CONFIG_PATH = "config.json"
+DEFAULT_CONFIG = {
+    "csv_path": "",
+    "html_save_path": "",
+    "output_csv_path": "",
+    "timeout": 10,
+    "language": "en",
+    "save_format": "pdf",
+    "enable_logs": True,
+    "force_download": False,
+    "use_debug_mode": False,
+    "log_file": "process_log.txt",
+    "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "allowed_domains": ["ec.europa.eu", "agenziaentrate.gov.it"]
+}
+
+CHROME_PATH_ALLOWED = [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"
+]
+
+def validate_config(config):
+    errors = []
+
+    # Percorso Chrome: whitelist + file esistente
+    chrome_path = os.path.normpath(config.get("chrome_path", ""))
+    allowed_normalized = [os.path.normpath(p) for p in CHROME_PATH_ALLOWED]
+    if chrome_path not in allowed_normalized or not os.path.isfile(chrome_path):
+        errors.append(f"chrome_path non valido o inesistente: {chrome_path}")
+
+    # Timeout: deve essere intero positivo
+    if not isinstance(config.get("timeout", 10), int) or config["timeout"] < 0:
+        errors.append("timeout deve essere un intero positivo")
+
+    # Lingua
+    if not isinstance(config.get("language", "en"), str):
+        errors.append("language deve essere una stringa")
+
+    # allowed_domains: deve essere lista
+    if not isinstance(config.get("allowed_domains", []), list):
+        errors.append("allowed_domains deve essere una lista di domini autorizzati")
+
+    # Modalità PDF
+    if config.get("pdf_mode") not in ["with_links", "no_links", "image"]:
+        errors.append(f"pdf_mode non valido: {config.get('pdf_mode')}")
+
+    # Formato di salvataggio
+    if config.get("save_format") not in ["pdf", "png"]:
+        errors.append(f"save_format non valido: {config.get('save_format')}")
+
+    # Log level (se presente)
+    if "log_level" in config and config.get("log_level") not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+        errors.append(f"log_level non valido: {config.get('log_level')}")
+
+    # Configurazione siti
+    if "sites" in config and not isinstance(config.get("sites"), dict):
+        errors.append("La sezione 'sites' deve essere un dizionario")
+
+    if errors:
+        raise ValueError("Configurazione non valida:\n" + "\n".join(errors))
+
+    return config
+
+
+
 
 # Function: load_config
 # Description: Function to load config.
@@ -27,19 +103,13 @@ CONFIG_PATH = "config.json"
 # Called by: __init__, load_sites_into_table, process_pages, save_config, save_debug_level
 # Calls: open, save_config
 def load_config():
-    """
-    Function: load_config
-    Description: Function to load config.
-    Args:
-        None
-    Returns:
-        Dict
-    """
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
+            config = json.load(f)
+            return validate_config(config)
+    else:
+        save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG
 
 
 # Function: load_locale
@@ -71,7 +141,16 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+# === Logging eventi critici separato ===
+base_dir = os.path.dirname(os.path.abspath(__file__))  # Percorso corrente del file
+log_dir = os.path.join(base_dir, "log")
+os.makedirs(log_dir, exist_ok=True)
+critical_log_path = os.path.join(log_dir, "critical_security.log")
 
+critical_handler = logging.FileHandler(critical_log_path, encoding="utf-8")
+critical_handler.setLevel(logging.WARNING)  # Solo WARNING, ERROR, CRITICAL
+critical_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logging.getLogger().addHandler(critical_handler)
 # Caricamento della configurazione dell'applicazione
 config = load_config()  # Assicurati che questa funzione sia definita altrove nel tuo codice
 
@@ -83,15 +162,11 @@ def sanitize_filename(name):
     """
     Rende sicuro un nome file rimuovendo o sostituendo caratteri non validi per il filesystem.
     """
-    # Rimuove caratteri vietati da Windows: \ / : * ? " < > |
     name = re.sub(r'[\\/*?:"<>|]', "_", name)
-    # Opzionale: rimuove anche caratteri Unicode di controllo
     name = re.sub(r'[\x00-\x1f\x7f]', "", name)
+    if not name.strip():
+        raise ValueError("Nome file vuoto non consentito")
     return name.strip()
-
-
-
-
 
 # Function: save_config
 # Description: Function to save config.
@@ -101,26 +176,23 @@ def sanitize_filename(name):
 # Calls: eval, float, len, load_config, open, print, save_config_to_file
 def save_config(cfg):
     """
-    Function: save_config
-    Description: Function to save config.
-    Args:
-        cfg
-    Returns:
-        [None]
+    Salva il file di configurazione solo se valido.
     """
+    validated = validate_config(cfg)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2, ensure_ascii=False)
+        json.dump(validated, f, indent=2, ensure_ascii=False)
 
 
-import hashlib
-import difflib
-from bs4 import BeautifulSoup
-from dateutil.parser import parse as parse_date
+def safe_join(base_dir, unsafe_name):
+    safe_name = sanitize_filename(unsafe_name)
+    full_path = os.path.abspath(os.path.join(base_dir, safe_name))
+    if not full_path.startswith(os.path.abspath(base_dir)):
+        raise ValueError("Tentativo di directory traversal bloccato")
+    return full_path
 
 
 # === VideoPlayer (imageio + PIL) ===
-import imageio
-from PIL import Image, ImageTk
+
 
 
 class VideoPlayer:
@@ -241,30 +313,75 @@ def is_chrome_debug_running(port=9222):
 # Calls: FileNotFoundError, is_chrome_debug_running
 def launch_chrome_debug_if_needed(chrome_path, port=9222):
     """
-    Function: launch_chrome_debug_if_needed
-    Description: Function to launch chrome debug if needed.
-    Args:
-        chrome_path, port
-    Returns:
-        [None]
+    Avvia Chrome in modalità debug con profilo isolato temporaneo.
+    Controlla se già in esecuzione con profilo autorizzato, altrimenti avvia nuovo e fa cleanup.
     """
+    import tempfile
+    import shutil
+    import atexit
+
+    def extract_user_data_dir(cmdline):
+        for part in cmdline.split():
+            if part.startswith("--user-data-dir="):
+                return part.split("=", 1)[1].strip('"')
+        return None
+
+    # === CONTROLLO: Chrome già attivo sulla porta 9222? ===
     if is_chrome_debug_running(port):
-        return  # Già attivo, non fare nulla
+        logging.info("Porta di debug già in uso. Controllo processo.")
+        for proc in psutil.process_iter(['name', 'cmdline']):
+            try:
+                if 'chrome' in proc.info['name'].lower():
+                    cmdline = ' '.join(proc.info['cmdline']).lower()
+                    if f'--remote-debugging-port={port}' in cmdline:
+                        active_dir = extract_user_data_dir(cmdline)
+                        if active_dir:
+                            logging.info(f"Chrome debug attivo con profilo: {active_dir}")
+                            return
+                        else:
+                            logging.warning("⚠️ Porta usata da Chrome con profilo sconosciuto/non isolato.")
+                            from tkinter import messagebox
+                            messagebox.showwarning(
+                                "Sicurezza",
+                                "Chrome è attivo con un profilo sconosciuto (senza --user-data-dir)."
+                            )
+                            return
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return
 
+    # === CREAZIONE profilo solo ora ===
     if not os.path.exists(chrome_path):
-        raise FileNotFoundError(f"{locale.get('chrome_not_found_in_specified_path', 'Chrome non trovato nel percorso specificato')}: {chrome_path}")
+        raise FileNotFoundError(
+            f"{locale.get('chrome_not_found_in_specified_path', 'Chrome non trovato nel percorso specificato')}: {chrome_path}"
+        )
 
+    user_data_dir = tempfile.mkdtemp(prefix="chrome_debug_profile_")
+    logging.info(f"Profilo Chrome temporaneo creato in: {user_data_dir}")
 
-    subprocess.Popen([
+    def cleanup_temp_dir():
+        try:
+            shutil.rmtree(user_data_dir)
+            logging.info(f"Profilo temporaneo rimosso: {user_data_dir}")
+        except Exception as e:
+            logging.warning(f"Errore durante la rimozione del profilo temporaneo {user_data_dir}: {e}")
+
+    atexit.register(cleanup_temp_dir)
+
+    args = [
         chrome_path,
         f"--remote-debugging-port={port}",
-        "--user-data-dir=remote-profile",  # evita conflitti con il profilo utente
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-allow-origins=http://localhost",
+        f"--user-data-dir={user_data_dir}",
         "--no-first-run",
         "--no-default-browser-check",
         "--disable-popup-blocking"
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ]
 
-    time.sleep(3)  # Attendi che Chrome sia avviato prima di usarlo
+    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(3)
+
 
 
 # Function: get_debug_driver
@@ -394,6 +511,10 @@ def save_config(config):
         [None]
     """
     try:
+        # Garantisce la presenza di pdf_mode
+        if "pdf_mode" not in config:
+            config["pdf_mode"] = "with_links"
+
         with open(CONFIG_FILE, "w") as file:
             json.dump(config, file, indent=4)
     except Exception as e:
@@ -581,16 +702,15 @@ def get_base_dir():
 # Calls: [none]
 def ensure_directory_exists(path):
     """
-    Function: ensure_directory_exists
-    Description: Function to ensure directory exists.
-    Args:
-        path
-    Returns:
-        [None]
+    Crea la directory se non esiste. Rende i permessi restrittivi (0700 su Unix).
     """
     if not os.path.exists(path):
         os.makedirs(path)
-        logging.info(locale.get("created_directory_path", "Created directory: {path}").format(path=path))
+        try:
+            os.chmod(path, 0o700)
+        except Exception:
+            pass
+        logging.info(f"Created directory: {path}")
 
 
 # Function: save_page_as_pdf_with_selenium
@@ -599,63 +719,100 @@ def ensure_directory_exists(path):
 # Output: [None]
 # Called by: process_pages
 # Calls: FileNotFoundError, Options, Service, ensure_directory_exists, get_base_dir, open, write_log
-def save_page_as_pdf_with_selenium(url, output_path, timeout, log_file=None):
+def save_page_as_pdf_with_selenium(url, output_path, timeout, debug_mode=False, log_file=None):
     """
-    Function: save_page_as_pdf_with_selenium
-    Description: Function to save page as pdf with selenium.
+    Salva una pagina web come PDF. Se la pagina è vuota o fallisce la generazione del PDF,
+    salva uno screenshot PNG come fallback.
+
     Args:
-        url, output_path, timeout, log_file
+        url (str): L'URL della pagina da salvare.
+        output_path (str): Percorso completo per il file PDF.
+        timeout (int): Tempo massimo di attesa per il caricamento della pagina.
+        log_file (str): Percorso del file di log (opzionale).
+
     Returns:
-        [None]
+        bool: True se il PDF è stato salvato correttamente, False altrimenti.
     """
-    """Salva una pagina web come PDF utilizzando Selenium."""
-    driver_path = os.path.join(get_base_dir(), "chromedriver.exe")
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
-
-    # Disabilita JavaScript
-    chrome_options.add_experimental_option("prefs", {"profile.managed_default_content_settings.javascript": 2})
-
-
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-
     try:
-        logging.info(locale.get("navigating_to_url", f"Navigating to {url}"))
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-javascript")
+        driver = webdriver.Chrome(service=Service("chromedriver.exe"), options=options)
         driver.get(url)
+
+        # Rimuovi script e iframe prima della stampa
+        driver.execute_script("""
+            let scripts = document.querySelectorAll('script, iframe');
+            scripts.forEach(e => e.remove());
+        """)
+
+        if debug_mode:
+            from urllib.parse import urlparse
+            from datetime import datetime
+        
+            parsed = urlparse(url)
+            host = parsed.hostname.replace(".", "_") if parsed.hostname else "unknownhost"
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+            debug_dir = os.path.join(get_base_dir(), "debug_html")
+            os.makedirs(debug_dir, exist_ok=True)
+            filename = os.path.join(debug_dir, f"debug_{host}_{ts}.html")
+
+        
+            html = driver.execute_script("return document.documentElement.outerHTML;")
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(html)
+            logging.info(f"HTML salvato per debug: {filename}")
+
         time.sleep(timeout)
 
-        pdf_file_path = os.path.abspath(output_path)
-        ensure_directory_exists(os.path.dirname(pdf_file_path))
-        
-        # Ottieni il PDF in formato Base64
-        pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {})
-        
-        # Decodifica il Base64 e salva come PDF binario
-        import base64
-        with open(pdf_file_path, "wb") as pdf_file:
-            pdf_file.write(base64.b64decode(pdf_data.get("data", "")))
+        # Verifica contenuto testuale
+        body_text = driver.execute_script("return document.body.innerText.trim();")
+        if not body_text:
+            logging.warning(f"Pagina vuota per {url}, PDF non generato.")
+            screenshot_path = output_path.replace(".pdf", ".png")
+            driver.save_screenshot(screenshot_path)
+            logging.info(f"Screenshot salvato come fallback: {screenshot_path}")
+            driver.quit()
+            return False
 
-        logging.info(locale.get("pdf_saved_at_pdf_file_path", "PDF saved at {pdf_file_path}").format(pdf_file_path=pdf_file_path))
-
-
-        if log_file:
-            write_log(log_file, locale.get("pdf_saved_log_entry", "PDF saved: {pdf_file_path}").format(pdf_file_path=pdf_file_path))
-
-        # Controlla se il file è stato salvato correttamente
-        if os.path.exists(pdf_file_path):
-            return True
+        # Log HTML troncato
+        html_sample = driver.execute_script("return document.body.innerHTML;")
+        html_sample = html_sample[:200] + "..." if len(html_sample) > 200 else html_sample
+        if debug_mode:
+            logging.debug(f"[{url}] HTML troncato: {html_sample}")
         else:
-            raise FileNotFoundError(locale.get("pdf_not_saved_at_path", "PDF file was not saved at {pdf_file_path}").format(pdf_file_path=pdf_file_path))
-    except Exception as e:
-        logging.error(locale.get("error_saving_pdf_for_url_e", "Error saving PDF for {url}: {e}").format(url=url, e=e))
-        if log_file:
-            write_log(log_file, locale.get("error_saving_pdf_for_url_e", "Error saving PDF for {url}: {e}").format(url=url, e=e))
-        return False
-    finally:
+            logging.debug(locale.get("html_debug_deactivated", f"[{url}] Modalità debug disattivata, HTML non loggato."))
+
+
+        # Genera PDF
+        result = driver.execute_cdp_cmd("Page.printToPDF", {
+            "printBackground": True,
+            "preferCSSPageSize": True
+        })
+
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        with open(output_path, "wb") as f:
+            f.write(base64.b64decode(result["data"]))
+
+        # Firma SHA256 del PDF
+        import hashlib
+        pdf_hash = hashlib.sha256(open(output_path, 'rb').read()).hexdigest()
+        logging.info(f"SHA256 PDF: {pdf_hash}")
+
+        logging.info(f"PDF salvato in {output_path}")
         driver.quit()
+        return True
+
+    except Exception as e:
+        logging.error(f"Errore durante il salvataggio PDF da {url}: {e}")
+        return False
+
+
 
 
 # Function: extract_last_updated_with_selenium
@@ -677,7 +834,7 @@ def extract_last_updated_with_selenium(url, timeout):
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
+    # chrome_options.add_argument("--no-sandbox")
 
     service = Service(driver_path)
     driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -700,6 +857,72 @@ def extract_last_updated_with_selenium(url, timeout):
     finally:
         driver.quit()
 
+def setup_secure_logging(log_file_path="process_log.txt", max_bytes=1048576, backup_count=5):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    ensure_directory_exists(os.path.dirname(log_file_path))
+    handler = RotatingFileHandler(log_file_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    logger.addHandler(console_handler)
+    logging.info("Logging configurato in modo sicuro e con rotazione.")
+
+def get_secure_chrome_options():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--no-first-run")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--disable-translate")
+    options.add_argument("--window-size=1920,1080")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
+    return options
+
+def is_domain_allowed(url, allowed_domains):
+    parsed = urlparse(url)
+    netloc = parsed.netloc.lower()
+    for allowed in allowed_domains:
+        if netloc == allowed or netloc.endswith("." + allowed):
+            return True
+    return False
+
+def sanitize_pdf_links(pdf_path):
+    try:
+        with pikepdf.open(pdf_path, allow_overwriting_input=True) as pdf:
+            for page in pdf.pages:
+                if "/Annots" in page:
+                    page.Annots = []
+            pdf.save(pdf_path)
+            logging.info(f"Rimossi link attivi da: {pdf_path}")
+    except Exception as e:
+        logging.warning(f"Errore nella sanitizzazione PDF {pdf_path}: {e}")
+
+
+def close_chrome_debug(port=9222):
+    """
+    Termina il processo Chrome avviato in modalità debug.
+    """
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if 'chrome' in proc.info['name'].lower():
+                cmdline = ' '.join(proc.info['cmdline']).lower()
+                if f'--remote-debugging-port={port}' in cmdline:
+                    proc.terminate()
+                    logging.info("Chrome debug terminato automaticamente.")
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+
+
 # Function: process_pages
 # Description: Function to process pages.
 # Inputs: config, progress_table, progress_bar, progress_count, pause_event, stop_event
@@ -711,14 +934,26 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
     import csv
     import time
     import logging
-    import subprocess
     import psutil
     from datetime import datetime
     from urllib.parse import urlparse
     from tkinter import messagebox
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
+
+    def is_url_safe(url):
+        from urllib.parse import urlparse
+        import ipaddress
+        parsed = urlparse(url)
+        try:
+            ipaddress.ip_address(parsed.hostname)
+            return False  # Blocca URL con IP diretti
+        except:
+            pass
+        return (
+            parsed.scheme in ["http", "https"]
+            and not any(x in parsed.path for x in ["..", "%", "<", ">", "\"", "'"])
+        )
 
     def is_chrome_debug_running():
         for proc in psutil.process_iter(['name', 'cmdline']):
@@ -736,7 +971,7 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
     ensure_directory_exists(save_path)
 
     try:
-        raw_data, fieldnames = read_csv(config["csv_path"])  # Lettura posizionale
+        raw_data, fieldnames = read_csv(config["csv_path"])
     except Exception as e:
         logging.error(locale.get("error_reading_csv", "Errore durante la lettura del CSV: {e}").format(e=e))
         messagebox.showerror(
@@ -755,8 +990,6 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
     localized_keys = [locale.get(k.lower().replace(" ", "_"), k) for k in standard_keys]
     error_fieldnames = localized_keys + [locale.get("errore", "Errore")]
 
-    # output_csv_path = os.path.join(config["output_csv_path"], f"output_{timestamp_dir}.csv")
-    # error_csv_path = os.path.join(config["output_csv_path"], f"errors_{timestamp_dir}.csv")
     output_csv_path = os.path.join(save_path, f"output_{timestamp_dir}.csv")
     error_csv_path = os.path.join(save_path, f"errors_{timestamp_dir}.csv")
 
@@ -764,16 +997,10 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
     chrome_path = config.get("chrome_path", r"C:\Program Files\Google\Chrome\Application\chrome.exe")
     timeout = config["timeout"]
 
-    if use_debug and not is_chrome_debug_running():
-        subprocess.Popen([
-            chrome_path,
-            "--remote-debugging-port=9222",
-            "--user-data-dir=C:\\chrome-debug-temp"
-        ])
-        logging.info(locale.get("avviato_chrome_in_modalità_debug", "Avviato Chrome in modalità debug."))
+    if use_debug:
+        launch_chrome_debug_if_needed(chrome_path)
 
-    with open(output_csv_path, "w", encoding="utf-8", newline="") as outfile, \
-         open(error_csv_path, "w", encoding="utf-8", newline="") as errorfile:
+    with open(output_csv_path, "w", encoding="utf-8", newline="") as outfile,open(error_csv_path, "w", encoding="utf-8", newline="") as errorfile:
 
         writer = csv.DictWriter(outfile, fieldnames=localized_keys, delimiter=';')
         writer.writeheader()
@@ -794,6 +1021,14 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
             country_name = row[1].strip()
             previous_signature = row[2].strip()
             current_signature = row[3].strip()
+            if not is_url_safe(url):
+                warning_msg = locale.get("url_non_sicuro_ignorato", f"URL non sicuro ignorato: {url}").format(url=url)
+                logging.warning(warning_msg)
+                continue
+            if not is_domain_allowed(url, config.get("allowed_domains", [])):
+                logging.warning(f"Dominio non autorizzato: {url}")
+                continue
+
             parsed_url = urlparse(url)
             domain = parsed_url.netloc.replace("www.", "")
             site_config = site_configs.get(domain)
@@ -816,43 +1051,38 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
                 continue
 
             try:
-                if use_debug:
-                    try:
-                        driver = get_debug_driver(chrome_path)
-                        logging.info(locale.get("connected_to_chrome_debug", "Connesso a Chrome debug."))
-                    except Exception as e:
-                        record["Errore"] = f"Debug error: {e}"
-                        progress_table.item(progress_table.get_children()[-1], values=(url, country_name, current_signature, record["Errore"]))
-                        error_writer.writerow({locale.get(k.lower().replace(" ", "_"), k): record.get(k, "") for k in standard_keys} |
-                                              {locale.get("errore", "Errore"): record["Errore"]})
-                        writer.writerow({locale.get(k.lower().replace(" ", "_"), k): record.get(k, "") for k in standard_keys})
-                        update_progress(progress_bar, progress_count, idx, total_rows)
-                        continue
-                else:
-                    options = Options()
-                    options.add_argument("--headless")
-                    options.add_argument("--disable-gpu")
-                    options.add_argument("--no-sandbox")
-                    driver = webdriver.Chrome(service=Service(os.path.join(get_base_dir(), "chromedriver.exe")), options=options)
-
+                driver = get_debug_driver(chrome_path) if use_debug else webdriver.Chrome(service=Service(os.path.join(os.getcwd(), "chromedriver.exe")), options=get_secure_chrome_options())
                 driver.get(url)
                 time.sleep(timeout)
 
                 method = site_config.get("update_method", "date").lower()
 
+                filename_base = url.split('/')[-1].split('?')[0].split('#')[0]
+                filename = safe_join(save_path, f"{filename_base}.pdf")
+
                 if method == "detection":
-                    filename_base = url.split('/')[-1].split('?')[0].split('#')[0]
                     changed, new_signature, reason, similarity = detect_page_change(driver, site_config, current_signature, filename_base)
                     record["Data Ultimo Aggiornamento"] = new_signature
 
-                    if changed or not current_signature:
-                        filename = os.path.join(save_path, f"{filename_base}.pdf")
+                    if changed or not current_signature or config.get("force_download", False):
                         saved = save_page_as_pdf_with_selenium(url, filename, timeout, config["log_file"])
+                        if saved:
+                            logging.warning(f"[DEBUG CHECK] PDF_MODE={config.get('pdf_mode')} | FILE={filename} | SAVED={saved}")
+                            if config.get("pdf_mode", "with_links") == "no_links":
+                                sanitize_pdf_links(filename)
+                            elif config.get("pdf_mode") == "image":
+                                logging.info(f"[RASTER] Modalità 'PDF immagine' attiva per: {filename}")
+                                image_paths = convert_pdf_to_images_fitz(filename)
+                                if image_paths:
+                                    replace_pdf_with_images_fitz(filename, image_paths)
+                                else:
+                                    logging.warning(f"[RASTER] Conversione PDF→immagine fallita, file originale mantenuto: {filename}")
+                        else:
+                            logging.error(f"[ERROR] Salvataggio PDF fallito per {filename}")
                         status = locale.get("PDF_Saved", "PDF salvato") if saved else locale.get("Error_saving_PDF", "Errore salvataggio PDF")
                         write_detection_log(f"[{country_name} - {url}] Metodo: {site_config.get('detection_type')} | Cambiata: {changed} | Similarità: {similarity:.3f} | PDF: {'SÌ' if saved else 'NO'}")
                     else:
                         status = locale.get("no_change_detected", "Nessun cambiamento")
-
                 else:
                     try:
                         new_date = extract_date(driver, site_config)
@@ -861,8 +1091,27 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
                         new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
                         record["Data Ultimo Aggiornamento"] = new_date_str
                         if (new_date_str != current_signature) or config.get("force_download", False):
-                            filename = os.path.join(save_path, f"{url.split('/')[-1]}.pdf")
-                            saved = save_page_as_pdf_with_selenium(url, filename, timeout, config["log_file"])
+                            saved = save_page_as_pdf_with_selenium(
+                                        url,
+                                        filename,
+                                        timeout,
+                                        debug_mode=config.get("debug_mode", False),
+                                        log_file=config["log_file"]
+                                    )
+                            if saved:
+                                logging.warning(f"[DEBUG CHECK] PDF_MODE={config.get('pdf_mode')} | FILE={filename} | SAVED={saved}")
+                                if config.get("pdf_mode", "with_links") == "no_links":
+                                    sanitize_pdf_links(filename)
+                                elif config.get("pdf_mode") == "image":
+                                    logging.info(f"[RASTER] Modalità 'PDF immagine' attiva per: {filename}")
+                                    image_paths = convert_pdf_to_images_fitz(filename)
+                                    if image_paths:
+                                        replace_pdf_with_images_fitz(filename, image_paths)
+                                    else:
+                                        logging.warning(f"[RASTER] Conversione PDF→immagine fallita, file originale mantenuto: {filename}")
+                            else:
+                                logging.error(f"[ERROR] Salvataggio PDF fallito per {filename}")
+
                             status = locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else locale.get("pdf_error", "Errore PDF")
                         else:
                             status = locale.get("no_update_needed", "Nessun aggiornamento necessario")
@@ -891,198 +1140,9 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
 
     messagebox.showinfo(locale.get("process_completed_title", "Processo completato"),
                         f"Output salvato: {output_csv_path}\nErrori: {error_csv_path}")
+    if config.get("use_debug_mode", False):
+        close_chrome_debug()
     close_loggers()
-
-
-
-# Dove inserire la funzione di rielaborazione singola:
-# Inseriscila nella classe `App`, accanto a `start_process`, `pause_process`, ecc.
-# Aggiungi un pulsante nel setup_tab2() che chiama self.reprocess_selected_row
-# e crea questa funzione con logica simile a quanto isolato qui sopra per una singola riga.
-
-
-
-
-
-def process_pages_OLD(config, progress_table, progress_bar, progress_count, pause_event=None, stop_event=None):
-    import os
-    import csv
-    import time
-    import logging
-    import subprocess
-    import psutil
-    from datetime import datetime
-    from urllib.parse import urlparse
-    from tkinter import messagebox
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
-
-    def is_chrome_debug_running():
-        for proc in psutil.process_iter(['name', 'cmdline']):
-            try:
-                if 'chrome.exe' in proc.info['name'].lower():
-                    cmdline = ' '.join(proc.info['cmdline']).lower()
-                    if '--remote-debugging-port=9222' in cmdline:
-                        return True
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-        return False
-
-    timestamp_dir = datetime.now().strftime("%Y%m%d%H%M")
-    save_path = os.path.join(config["html_save_path"], timestamp_dir)
-    ensure_directory_exists(save_path)
-
-    try:
-        data, fieldnames = read_csv(config["csv_path"])
-    except Exception as e:
-        logging.error(locale.get("error_reading_csv", "Errore durante la lettura del CSV: {e}").format(e=e))
-        messagebox.showerror(
-            locale.get("error_title", locale.get("error", "Errore")),
-            locale.get("error_reading_csv", "Errore durante la lettura del CSV: {e}").format(e=e)
-        )
-        return
-
-    site_configs = load_config().get("sites", {})
-    total_rows = len(data)
-    progress_bar["maximum"] = total_rows
-    progress_bar["value"] = 0
-    progress_count.config(text=f"0/{total_rows}")
-
-    localized_keys = {
-        "Path Paese": locale.get("url", "Path Paese"),
-        "Nome Nazione": locale.get("country", "Nome Nazione"),
-        "Data precedentemente rilevata": locale.get("previously_detected_date", "Data precedentemente rilevata"),
-        "Data Ultimo Aggiornamento": locale.get("last_updated_date", "Data Ultimo Aggiornamento")
-    }
-    fieldnames = list(localized_keys.values())
-    error_fieldnames = fieldnames + [locale.get("errore", "Errore")]
-
-    output_csv_path = os.path.join(config["output_csv_path"], f"output_{timestamp_dir}.csv")
-    error_csv_path = os.path.join(config["output_csv_path"], f"errors_{timestamp_dir}.csv")
-
-    use_debug = config.get("use_debug_mode", False)
-    chrome_path = config.get("chrome_path", r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
-    timeout = config["timeout"]
-
-    if use_debug and not is_chrome_debug_running():
-        subprocess.Popen([
-            chrome_path,
-            "--remote-debugging-port=9222",
-            "--user-data-dir=C:\\chrome-debug-temp"
-        ])
-        logging.info(locale.get("avviato_chrome_in_modalità_debug", "Avviato Chrome in modalità debug."))
-
-    with open(output_csv_path, "w", encoding="utf-8", newline="") as outfile, \
-         open(error_csv_path, "w", encoding="utf-8", newline="") as errorfile:
-
-        writer = csv.DictWriter(outfile, fieldnames=fieldnames, delimiter=';')
-        writer.writeheader()
-        error_writer = csv.DictWriter(errorfile, fieldnames=error_fieldnames, delimiter=';')
-        error_writer.writeheader()
-
-        for idx, row in enumerate(data, start=1):
-            if stop_event and stop_event.is_set():
-                logging.info(locale.get("stop_requested", "Stop richiesto."))
-                break
-            if pause_event:
-                while not pause_event.is_set():
-                    if stop_event and stop_event.is_set():
-                        return
-                    time.sleep(0.5)
-
-            url = row.get("Path Paese", "").strip()
-            country_name = row.get("Nome Nazione", "").strip()
-            current_signature = row.get("Data Ultimo Aggiornamento", "").strip()
-            parsed_url = urlparse(url)
-            domain = parsed_url.netloc.replace("www.", "")
-            site_config = site_configs.get(domain)
-
-            item_id = progress_table.insert("", "end", values=(url, country_name, current_signature, locale.get("starting","Inizio...")))
-            progress_table.update_idletasks()
-
-            row["Data precedentemente rilevata"] = current_signature
-
-            if not site_config:
-                progress_table.item(item_id, values=(url, country_name, current_signature, locale.get("config_not_found", "Config Not Found")))
-                writer.writerow({localized_keys[k]: row.get(k, "") for k in localized_keys})
-                update_progress(progress_bar, progress_count, idx, total_rows)
-                continue
-
-            method = site_config.get("update_method", "date").lower()
-
-            try:
-                if use_debug:
-                    try:
-                        driver = get_debug_driver(chrome_path)
-                        logging.info(locale.get("connected_to_chrome_debug", "Connesso a Chrome debug."))
-                    except Exception as e:
-                        row["Errore"] = locale.get("debug_connection_failed_e", "Debug connessione fallita: {e}").format(e=e)
-                        progress_table.item(item_id, values=(url, country_name, current_signature, locale.get("debug_error","Errore debug")))
-                        error_writer.writerow({**{localized_keys[k]: row.get(k, "") for k in localized_keys}, locale.get("errore", "Errore"): row.get("Errore", "")})
-                        writer.writerow({localized_keys[k]: row.get(k, "") for k in localized_keys})
-                        update_progress(progress_bar, progress_count, idx, total_rows)
-                        continue
-                else:
-                    options = Options()
-                    options.add_argument("--headless")
-                    options.add_argument("--disable-gpu")
-                    options.add_argument("--no-sandbox")
-                    driver = webdriver.Chrome(service=Service(os.path.join(get_base_dir(), "chromedriver.exe")), options=options)
-
-                driver.get(url)
-                time.sleep(timeout)
-
-                if method == "detection":
-                    changed, new_signature, reason, similarity = detect_page_change(driver, site_config, current_signature)
-                    row["Data Ultimo Aggiornamento"] = new_signature
-
-                    if changed or not current_signature:
-                        filename = os.path.join(save_path, f"{url.split('/')[-1]}.pdf")
-                        saved = save_page_as_pdf_with_selenium(url, filename, timeout, config["log_file"])
-                        status = locale.get("PDF_Saved","PDF salvato - {reason}") if saved else locale.get("Error_saving_PDF","Errore salvataggio PDF")
-                        write_detection_log(f"[{country_name} - {url}] Metodo: {site_config.get('detection_type')} | Cambiata: {changed} | Similarità: {similarity:.3f} | PDF: {'SÌ' if saved else 'NO'}")
-                    else:
-                        status = "Nessun cambiamento"
-
-                else:
-                    try:
-                        new_date = extract_date(driver, site_config)
-                        if new_date in [locale.get("date_not_found", "DATE_NOT_FOUND"), locale.get("date_not_parsed", "DATE_NOT_PARSED")]:
-                            raise ValueError(new_date)
-                        new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
-                        row["Data Ultimo Aggiornamento"] = new_date_str
-                        if (new_date_str != current_signature) or config.get("force_download", False):
-                            filename = os.path.join(save_path, f"{url.split('/')[-1]}.pdf")
-                            saved = save_page_as_pdf_with_selenium(url, filename, timeout, config["log_file"])
-                            status = locale.get("updated_and_pdf_saved", "Updated and PDF saved") if saved else locale.get("pdf_error", "PDF Error")
-                        else:
-                            status = "No Update Needed"
-                    except Exception as ex:
-                        row["Errore"] = str(ex)
-                        progress_table.item(item_id, values=(url, country_name, current_signature, str(ex)))
-                        error_writer.writerow({**{localized_keys[k]: row.get(k, "") for k in localized_keys}, locale.get("errore", "Errore"): row.get("Errore", "")})
-                        writer.writerow({localized_keys[k]: row.get(k, "") for k in localized_keys})
-                        driver.quit()
-                        update_progress(progress_bar, progress_count, idx, total_rows)
-                        continue
-
-                progress_table.item(item_id, values=(url, country_name, row["Data Ultimo Aggiornamento"], status))
-                if not use_debug:
-                    driver.quit()
-
-            except Exception as e:
-                row["Errore"] = str(e)
-                progress_table.item(item_id, values=(url, country_name, locale.get("error", "Error"), str(e)))
-                error_writer.writerow({**{localized_keys[k]: row.get(k, "") for k in localized_keys}, locale.get("errore", "Errore"): row.get("Errore", "")})
-
-            writer.writerow({localized_keys[k]: row.get(k, "") for k in localized_keys})
-            update_progress(progress_bar, progress_count, idx, total_rows)
-
-    messagebox.showinfo(locale.get("process_completed_title", locale.get("process_completed", "Process Completed")), f"Output salvato: {output_csv_path}\nErrori: {error_csv_path}")
-    close_loggers()
-
-
 
 # Function: generate_signature_hash
 # Description: Function to generate signature hash.
@@ -1197,20 +1257,21 @@ def build_detection_signature(hash_val: str, similarity: float) -> str:
 # Calls: open
 def write_detection_log(message: str):
     """
-    Scrive un messaggio nel file 'detection.log' nella directory dello script/eseguibile.
+    Scrive un messaggio nel file 'detection.log' nella directory 'log/' dello script.
 
     Args:
         message (str): Messaggio completo da registrare nel log.
     """
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_path = os.path.join(get_base_dir(), "detection.log")
+    log_dir = os.path.join(get_base_dir(), "log")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "detection.log")
 
     try:
         with open(log_path, "a", encoding="utf-8") as log_file:
             log_file.write(f"[{timestamp}] {message}\n")
     except Exception as e:
         logging.error(f"Errore durante la scrittura del log detection: {e}")
-
 
 
 # Function: detect_page_change
@@ -1422,7 +1483,7 @@ def extract_date(driver, site_config):
 # Description: Function to identify date selector.
 # Inputs: selector
 # Output: selector
-# Called by: extract_date, extract_date_OLD
+# Called by: extract_date
 # Calls: [none]
 def identify_date_selector(selector):
     """
@@ -1477,7 +1538,8 @@ def run_process_pages(self):
         locale=self.locale,  # <--- aggiunto!
         )
     except Exception as e:
-        logging.error(locale.get("error_during_process_e", f"Error during process: {e}"))
+        logging.error(locale.get("error_during_process_e", "Error during process: {e}").format(e=e))
+
 
 
 
@@ -1687,6 +1749,10 @@ class App:
         self.video_player = VideoPlayer(canvas=None, path="webscraperRobot.mp4")
 
         self.force_download_var = tk.BooleanVar(value=self.config.get("force_download", False))
+        # Mappa modalità stringa → intero per il cursore
+        pdf_mode_map = {"with_links": 0, "no_links": 1, "image": 2}
+        initial_mode = self.config.get("pdf_mode", "with_links")
+        self.pdf_mode_var = tk.IntVar(value=pdf_mode_map.get(initial_mode, 0))
         self.csv_data = []
         self.csv_columns = []
         self.csv_path = None
@@ -1838,6 +1904,33 @@ class App:
             variable=self.force_download_var
         )
         self.checkbox_force_download.pack(anchor="w", pady=5)
+
+        # Etichetta sopra il cursore
+        tk.Label(
+            content_frame,
+            text=self.locale.get("pdf_mode", "Modalità PDF")
+        ).pack(anchor="w", pady=(5, 0))
+        
+        # Etichetta dinamica che mostra la modalità selezionata
+        self.pdf_mode_label = tk.Label(content_frame)
+        self.pdf_mode_label.pack(anchor="w")
+        
+        # Cursore modalità PDF (valori 0, 1, 2)
+        self.pdf_mode_scale = tk.Scale(
+            content_frame,
+            from_=0,
+            to=2,
+            orient="horizontal",
+            showvalue=False,
+            variable=self.pdf_mode_var,
+            command=self.on_pdf_mode_change,
+            length=200
+        )
+        self.pdf_mode_scale.pack(anchor="w", pady=(0, 5))
+        
+        # Aggiorna inizialmente l'etichetta in base al valore corrente
+        self.on_pdf_mode_change(self.pdf_mode_var.get())
+
     
         # Checkbox per Debug mode
         self.use_debug_mode_var = tk.BooleanVar(value=self.config.get("use_debug_mode", False))
@@ -1875,6 +1968,26 @@ class App:
     
         # Carica CSV se già impostato
         self.load_initial_csv()
+
+    def on_pdf_mode_change(self, value):
+        """Aggiorna l'etichetta della modalità PDF e la config"""
+        mode_map = {
+            0: self.locale.get("pdf_with_links", "PDF con link"),
+            1: self.locale.get("pdf_no_links", "PDF senza link"),
+            2: self.locale.get("pdf_image", "PDF immagine")
+        }
+    
+        try:
+            value = int(value)
+        except ValueError:
+            value = 0
+    
+        self.pdf_mode_label.config(text=mode_map.get(value, "PDF con link"))
+    
+        # Salva il valore corrispondente nella config
+        reverse_map = {0: "with_links", 1: "no_links", 2: "image"}
+        self.config["pdf_mode"] = reverse_map.get(value, "with_links")
+
 
     def reprocess_selected_row(self):
         selected = self.progress_table.selection()
@@ -1914,7 +2027,11 @@ class App:
                 options = Options()
                 options.add_argument("--headless")
                 options.add_argument("--disable-gpu")
-                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--disable-blink-features=AutomationControlled")
+                options.add_argument("--disable-javascript")
+                # options.add_argument("--no-sandbox")
                 driver = webdriver.Chrome(
                     service=Service(os.path.join(get_base_dir(), "chromedriver.exe")),
                     options=options
@@ -1940,8 +2057,20 @@ class App:
                             record["Url"],
                             pdf_filename,
                             self.config["timeout"],
-                            self.config["log_file"]
+                            debug_mode=self.config.get("debug_mode", False),
+                            log_file=self.config["log_file"]
                         )
+                        if saved:
+                            if self.config.get("pdf_mode", "with_links") == "no_links":
+                                sanitize_pdf_links(pdf_filename)
+                            elif self.config.get("pdf_mode") == "image":
+                                logging.info(f"[RASTER] Modalità 'PDF immagine' attiva per: {pdf_filename}")
+                                image_paths = convert_pdf_to_images_fitz(pdf_filename)
+                                if image_paths:
+                                    replace_pdf_with_images_fitz(pdf_filename, image_paths)
+                                else:
+                                    logging.warning(f"[RASTER] Conversione PDF→immagine fallita, file originale mantenuto: {pdf_filename}")
+
                         status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
                     else:
                         status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
@@ -1966,7 +2095,8 @@ class App:
                                 record["Url"],
                                 pdf_filename,
                                 self.config["timeout"],
-                                self.config["log_file"]
+                                debug_mode=self.config.get("debug_mode", False),
+                                log_file=self.config["log_file"]
                             )
                             status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
                         else:
@@ -2015,102 +2145,6 @@ class App:
                     self.locale.get("error", "Errore"),
                     f"{self.locale.get('error_during_process_e', 'Errore durante il processo')}: {e}"
                 )
-
-    def reprocess_selected_row_OLD(self):
-        selected = self.progress_table.selection()
-        if not selected:
-            messagebox.showwarning("Nessuna selezione", "Seleziona una riga da rielaborare nel Tab 2")
-            return
-    
-        item_id = selected[0]
-        row_values = self.progress_table.item(item_id, "values")
-    
-        # Mapping posizionale fisso
-        record = {
-            "Url": row_values[0],
-            "Nome Nazione": row_values[1],
-            "Data Ultimo Aggiornamento": row_values[2]
-        }
-    
-        from urllib.parse import urlparse
-        parsed_url = urlparse(record["Url"])
-        domain = parsed_url.netloc.replace("www.", "")
-        site_configs = load_config().get("sites", {})
-        site_config = site_configs.get(domain)
-    
-        if not site_config:
-            messagebox.showerror("Errore", f"Nessuna configurazione trovata per il dominio: {domain}")
-            return
-    
-        from selenium import webdriver
-        from selenium.webdriver.chrome.service import Service
-        from selenium.webdriver.chrome.options import Options
-    
-        try:
-            options = Options()
-            options.add_argument("--headless")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--no-sandbox")
-            driver = webdriver.Chrome(service=Service(os.path.join(get_base_dir(), "chromedriver.exe")), options=options)
-    
-            driver.get(record["Url"])
-            time.sleep(self.config["timeout"])
-    
-            if site_config.get("update_method", "date") == "detection":
-                changed, new_signature, reason, similarity = detect_page_change(driver, site_config, record["Data Ultimo Aggiornamento"])
-                record["Data Ultimo Aggiornamento"] = new_signature
-                status = "Cambiata" if changed else "Invariata"
-            else:
-                new_date = extract_date(driver, site_config)
-                if isinstance(new_date, datetime):
-                    record["Data Ultimo Aggiornamento"] = new_date.strftime("%Y-%m-%d %H:%M:%S")
-                    status = "Aggiornata"
-                else:
-                    status = "Errore"
-    
-            driver.quit()
-            self.progress_table.item(item_id, values=(
-                record["Url"],
-                record["Nome Nazione"],
-                record["Data Ultimo Aggiornamento"],
-                status
-            ))
-    
-            # Aggiorna file CSV più recente (output)
-            output_dir = self.config.get("output_csv_path")
-            if output_dir and os.path.exists(output_dir):
-                output_files = sorted(
-                    [f for f in os.listdir(output_dir) if f.startswith("output_") and f.endswith(".csv")],
-                    reverse=True
-                )
-                if output_files:
-                    output_path = os.path.join(output_dir, output_files[0])
-                    with open(output_path, "r", encoding="utf-8") as f:
-                        reader = list(csv.reader(f, delimiter=';'))
-                        headers = reader[0]
-                        rows = reader[1:]
-    
-                    localized_fieldnames = [locale.get(fn.lower().replace(" ", "_"), fn) for fn in
-                                            ["Url", "Nome Nazione", "Data precedentemente rilevata", "Data Ultimo Aggiornamento"]]
-    
-                    url_index = headers.index(locale.get("url", "Url"))
-                    date_index = headers.index(locale.get("last_updated_date", "Data Ultimo Aggiornamento"))
-    
-                    for i, row in enumerate(rows):
-                        if row[url_index].strip() == record["Url"]:
-                            rows[i][date_index] = record["Data Ultimo Aggiornamento"]
-                            break
-    
-                    with open(output_path, "w", encoding="utf-8", newline="") as f:
-                        writer = csv.writer(f, delimiter=';')
-                        writer.writerow(headers)
-                        writer.writerows(rows)
-    
-        except Exception as e:
-            logging.error(f"Errore durante la rielaborazione: {e}")
-            messagebox.showerror("Errore", f"Errore durante la rielaborazione: {e}")
-    
-
 
     def on_language_change(self, event=None):
         new_lang = self.language_var.get()
@@ -2467,134 +2501,7 @@ class App:
 
             entry.bind("<Return>", save_edit)
             entry.bind("<FocusOut>", save_edit)
-
-
-
-    def edit_site_cell_OLD(self, event):
-        item_id = self.site_table.focus()
-        if not item_id:
-            return
-    
-        col = self.site_table.identify_column(event.x)
-        col_index = int(col.replace("#", "")) - 1
-        values = list(self.site_table.item(item_id, "values"))
-    
-        if col_index >= len(values):
-            return  # prevenzione IndexError
-    
-        current_value = values[col_index]
-        x, y, width, height = self.site_table.bbox(item_id, col)
-        col_name = self.site_table.heading(col)['text']
-    
-        # Campi a scelta fissa con combobox
-        if col_name == "Metodo":
-            combo = ttk.Combobox(self.site_table, values=["date", "detection"], state="readonly")
-            combo.set(current_value)
-            combo.place(x=x, y=y, width=width, height=height)
-            combo.focus_set()
-    
-            def save_combo(event=None):
-                new_value = combo.get()
-                combo.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            combo.bind("<<ComboboxSelected>>", save_combo)
-            combo.bind("<FocusOut>", save_combo)
-    
-        elif col_name == "Tipo Rilevamento":
-            combo = ttk.Combobox(self.site_table, values=["hash", "semantic", "both"], state="readonly")
-            combo.set(current_value)
-            combo.place(x=x, y=y, width=width, height=height)
-            combo.focus_set()
-    
-            def save_combo(event=None):
-                new_value = combo.get()
-                combo.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            combo.bind("<<ComboboxSelected>>", save_combo)
-            combo.bind("<FocusOut>", save_combo)
-    
-        # Per gli altri campi (inclusi month/day translations): input libero
-        else:
-            entry = tk.Entry(self.site_table)
-            entry.insert(0, current_value)
-            entry.place(x=x, y=y, width=width, height=height)
-            entry.focus_set()
-    
-            def save_edit(event=None):
-                new_value = entry.get()
-                entry.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            entry.bind("<Return>", save_edit)
-            entry.bind("<FocusOut>", save_edit)
-
-    
-    def edit_site_cell_OLD(self, event):
-        item_id = self.site_table.focus()
-        if not item_id:
-            return
-    
-        col = self.site_table.identify_column(event.x)
-        col_index = int(col.replace("#", "")) - 1
-        values = list(self.site_table.item(item_id, "values"))
-    
-        if col_index >= len(values):
-            return  # prevenzione IndexError
-    
-        current_value = values[col_index]
-        x, y, width, height = self.site_table.bbox(item_id, col)
-        col_name = self.site_table.heading(col)['text']
-    
-        if col_name == "Metodo":
-            combo = ttk.Combobox(self.site_table, values=["date", "detection"], state="readonly")
-            combo.set(current_value)
-            combo.place(x=x, y=y, width=width, height=height)
-            combo.focus_set()
-    
-            def save_combo(event=None):
-                new_value = combo.get()
-                combo.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            combo.bind("<<ComboboxSelected>>", save_combo)
-            combo.bind("<FocusOut>", save_combo)
-    
-        elif col_name == "Tipo Detection":
-            combo = ttk.Combobox(self.site_table, values=["hash", "semantic", "both"], state="readonly")
-            combo.set(current_value)
-            combo.place(x=x, y=y, width=width, height=height)
-            combo.focus_set()
-    
-            def save_combo(event=None):
-                new_value = combo.get()
-                combo.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            combo.bind("<<ComboboxSelected>>", save_combo)
-            combo.bind("<FocusOut>", save_combo)
-    
-        else:
-            entry = tk.Entry(self.site_table)
-            entry.insert(0, current_value)
-            entry.place(x=x, y=y, width=width, height=height)
-            entry.focus_set()
-    
-            def save_edit(event=None):
-                new_value = entry.get()
-                entry.destroy()
-                values[col_index] = new_value
-                self.site_table.item(item_id, values=values)
-    
-            entry.bind("<Return>", save_edit)
-            entry.bind("<FocusOut>", save_edit)
-    
+ 
     def save_config(self):
         """Salva la configurazione aggiornata nel file JSON, mantenendo le chiavi non modificabili come 'chrome_path'."""
         try:
@@ -2654,53 +2561,6 @@ class App:
         except Exception as e:
             messagebox.showerror(locale.get("error_saving_config_title", "Save Error"), f"{locale.get('error_saving_config', 'An error occurred while saving the configuration')}:\n{e}")
     
-    def save_config_OLD(self):
-        """Salva la configurazione aggiornata nel file JSON, mantenendo le chiavi non modificabili come 'chrome_path'."""
-        try:
-            original_config = load_config()  # Leggi l'originale per conservare le chiavi non toccabili
-            self.config["csv_path"] = self.csv_path_var.get()
-            self.config["html_save_path"] = self.save_path_var.get()
-            self.config["timeout"] = self.timeout_var.get()
-            self.config["force_download"] = self.force_download_var.get()
-            self.config["use_debug_mode"] = self.use_debug_mode_var.get()  # Nuovo campo salvato
-    
-            # Recupera configurazione dei siti
-            sites_config = {}
-            for row in self.site_table.get_children():
-                values = self.site_table.item(row)["values"]
-                if len(values) >= 10:
-                    (
-                        site,
-                        method,
-                        selector,
-                        date_format,
-                        language,
-                        prefix_to_remove,
-                        month_translations,
-                        day_translations,
-                        detection_type,
-                        threshold
-                    ) = values
-    
-                    sites_config[site] = {
-                        "update_method": method,
-                        "date_selector": selector,
-                        "date_format": date_format,
-                        "language": language or "",
-                        "prefix_to_remove": prefix_to_remove or "",
-                        "month_translations": eval(month_translations) if month_translations else {},
-                        "day_translations": eval(day_translations) if day_translations else {},
-                        "detection_type": detection_type,
-                        "detection_threshold": float(threshold) if threshold else ""
-                    }
-    
-            self.config["sites"] = sites_config
-            save_config_to_file({**original_config, **self.config})
-            messagebox.showinfo("Salvataggio riuscito", locale.get("configurazione_salvata_correttamente", "Configurazione salvata correttamente."))
-    
-        except Exception as e:
-            messagebox.showerror(locale.get("error_saving_config_title", "Save Error"), f"{locale.get('error_saving_config', 'An error occurred while saving the configuration')}:\n{e}")
-
     
     def check_chrome_and_chromedriver(self):
         """Controlla le versioni di Chrome e Chromedriver."""
@@ -2877,7 +2737,7 @@ class App:
                 stop_event=stop_event
             )
         except Exception as e:
-            logging.error(locale.get("error_during_process_e", f"Error during process: {e}"))
+            logging.error(locale.get("error_during_process_e", "Error during process: {e}").format(e=e))
         finally:
             self.video_player.stop()
 
@@ -3082,6 +2942,50 @@ class App:
         self.save_csv()
         logging.info(locale.get("updated_cell_in_row_rowid_column_co", f"Updated cell in row {row_id}, column {col_index}: {new_value}"))
 
+
+
+def convert_pdf_to_images_fitz(pdf_path, dpi=150):
+    """
+    Converte ogni pagina del PDF in una immagine PNG usando PyMuPDF.
+    Restituisce la lista dei file immagine generati.
+    """
+    image_paths = []
+    try:
+        doc = fitz.open(pdf_path)
+        for i in range(len(doc)):
+            page = doc.load_page(i)
+            pix = page.get_pixmap(dpi=dpi)
+            img_path = f"{os.path.splitext(pdf_path)[0]}_page{i+1}.png"
+            pix.save(img_path)
+            image_paths.append(img_path)
+        doc.close()
+        logging.info(f"[RASTER] {len(image_paths)} pagine convertite in immagini.")
+        return image_paths
+    except Exception as e:
+        logging.error(f"[RASTER] Errore durante la conversione PDF in immagini con fitz: {e}")
+        return []
+
+def replace_pdf_with_images_fitz(pdf_path, image_paths):
+    """
+    Ricostruisce un nuovo PDF interamente rasterizzato da immagini.
+    Sovrascrive il PDF originale.
+    """
+    try:
+        images = [Image.open(p).convert("RGB") for p in image_paths]
+        if images:
+            images[0].save(pdf_path, save_all=True, append_images=images[1:])
+            logging.info(f"[RASTER] PDF ricreato da immagini: {pdf_path}")
+            # Rimuovi i PNG temporanei
+            for img in image_paths:
+                os.remove(img)
+            try:
+                os.chmod(pdf_path, 0o600)
+            except:
+                pass
+        else:
+            logging.warning("[RASTER] Nessuna immagine valida, PDF originale non modificato.")
+    except Exception as e:
+        logging.error(f"[RASTER] Errore durante la ricostruzione PDF da immagini: {e}")
 
 
 if __name__ == "__main__":

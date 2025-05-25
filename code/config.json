@@ -1,9 +1,9 @@
 {
-    "csv_path": "E:/XXXX/XXXX/XXXX/XXXXX.csv",
-    "html_save_path": "E:/XXXX/XXXX/XXXX/output",
+    "csv_path": "E:/AI/XXXXX/XXX/XXXX.csv",
+    "html_save_path": "E:/XX/XXX/XXX/output",
     "output_csv_path": "",
     "timeout": 0,
-    "language": "en",
+    "language": "it",
     "filter_countries": [],
     "save_format": "pdf",
     "enable_logs": true,
@@ -34,23 +34,102 @@
                 "nov": "Nov",
                 "dic": "Dec"
             },
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "example.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='last-updated']",
+            "date_format": "%b %d, %Y",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "othersite.com": {
+            "update_method": "date",
+            "date_selector": "//div[@id='update-date']",
+            "date_format": "%d/%m/%Y",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "somethingwith.translateddays.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
+            "date_format": "%A, %d %b, %Y %H:%M",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "qualcosasenzaTRADUZIONIgiorni.com": {
+            "update_method": "date",
+            "date_selector": "//p[contains(@class, 'elementor-heading-title') and contains(text(), 'Last update:')]",
+            "date_format": "%A, %Y, %B %d",
+            "language": "en",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "generic": {
+            "update_method": "date",
+            "date_selector": "",
+            "date_format": "",
+            "language": "",
+            "prefix_to_remove": "",
+            "month_translations": {},
+            "day_translations": {},
+            "detection_type": "",
+            "detection_threshold": ""
+        },
+        "somethiing.com": {
+            "update_method": "date",
+            "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
+            "date_format": "%b %d, %Y %H:%M",
+            "language": "it",
+            "prefix_to_remove": "",
+            "month_translations": {
+                "gen": "Jan",
+                "feb": "Feb",
+                "mar": "Mar",
+                "apr": "Apr",
+                "mag": "May",
+                "giu": "Jun",
+                "lug": "Jul",
+                "ago": "Aug",
+                "set": "Sep",
+                "ott": "Oct",
+                "nov": "Nov",
+                "dic": "Dec"
+            },
             "day_translations": {
-                "lunedì": "Monday",
-                "martedì": "Tuesday",
-                "mercoledì": "Wednesday",
-                "giovedì": "Thursday",
-                "venerdì": "Friday",
-                "sabato": "Saturday",
-                "domenica": "Sunday"
+                "lun": "Mon",
+                "mar": "Tue",
+                "mer": "Wed",
+                "gio": "Thu",
+                "ven": "Fri",
+                "sab": "Sat",
+                "dom": "Sun"
             },
             "detection_type": "",
             "detection_threshold": ""
         },
-        "fnfe-mpe.org": {
+        "en.wikipedia.org": {
             "update_method": "detection",
-            "date_selector": "//*[contains(text(), 'Applicable à compter du')]",
-            "date_format": "%d %b %Y",
-            "language": "fr",
+            "date_selector": "",
+            "date_format": "",
+            "language": "",
             "prefix_to_remove": "",
             "month_translations": {},
             "day_translations": {},
@@ -58,7 +137,16 @@
             "detection_threshold": 0.9
         }
     },
-    "log_level": "DEBUG",
-    "force_download": false,
-    "use_debug_mode": true
+    "log_level": "ERROR",
+    "force_download": true,
+    "use_debug_mode": true,
+    "allowed_domains": [
+        "ec.europa.eu",
+        "theinvoicinghub.com",
+        "vatupdate.com",
+        "pagero.com",
+        "fnfe-mpe.org",
+        "impots.gouv.fr"
+    ],
+    "pdf_mode": "image"
 }
