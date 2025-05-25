@@ -1,6 +1,6 @@
 {
-    "csv_path": "E:/AI/XXXXX/XXX/XXXX.csv",
-    "html_save_path": "E:/XX/XXX/XXX/output",
+    "csv_path": "E:/xxxx/xxxx/xxx/xxx.csv",
+    "html_save_path": "E:/xxxx/xxx/xxx/output",
     "output_csv_path": "",
     "timeout": 0,
     "language": "it",
@@ -49,17 +49,6 @@
             "detection_type": "",
             "detection_threshold": ""
         },
-        "othersite.com": {
-            "update_method": "date",
-            "date_selector": "//div[@id='update-date']",
-            "date_format": "%d/%m/%Y",
-            "language": "it",
-            "prefix_to_remove": "",
-            "month_translations": {},
-            "day_translations": {},
-            "detection_type": "",
-            "detection_threshold": ""
-        },
         "somethingwith.translateddays.com": {
             "update_method": "date",
             "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
@@ -71,29 +60,7 @@
             "detection_type": "",
             "detection_threshold": ""
         },
-        "qualcosasenzaTRADUZIONIgiorni.com": {
-            "update_method": "date",
-            "date_selector": "//p[contains(@class, 'elementor-heading-title') and contains(text(), 'Last update:')]",
-            "date_format": "%A, %Y, %B %d",
-            "language": "en",
-            "prefix_to_remove": "",
-            "month_translations": {},
-            "day_translations": {},
-            "detection_type": "",
-            "detection_threshold": ""
-        },
-        "generic": {
-            "update_method": "date",
-            "date_selector": "",
-            "date_format": "",
-            "language": "",
-            "prefix_to_remove": "",
-            "month_translations": {},
-            "day_translations": {},
-            "detection_type": "",
-            "detection_threshold": ""
-        },
-        "somethiing.com": {
+        "something.com": {
             "update_method": "date",
             "date_selector": "//span[@class='conf-macro output-inline' and @data-macro-name='last-updated']",
             "date_format": "%b %d, %Y %H:%M",
@@ -125,7 +92,7 @@
             "detection_type": "",
             "detection_threshold": ""
         },
-        "en.wikipedia.org": {
+        "impots.gouv.fr": {
             "update_method": "detection",
             "date_selector": "",
             "date_format": "",
@@ -133,20 +100,12 @@
             "prefix_to_remove": "",
             "month_translations": {},
             "day_translations": {},
-            "detection_type": "semantic",
+            "detection_type": "both",
             "detection_threshold": 0.9
         }
     },
-    "log_level": "ERROR",
-    "force_download": true,
+    "log_level": "DEBUG",
+    "force_download": false,
     "use_debug_mode": true,
-    "allowed_domains": [
-        "ec.europa.eu",
-        "theinvoicinghub.com",
-        "vatupdate.com",
-        "pagero.com",
-        "fnfe-mpe.org",
-        "impots.gouv.fr"
-    ],
-    "pdf_mode": "image"
+	"allowed_domains": ["ec.europa.eu", "impots.gouv.fr","example.com","something.com","somethingwith.translateddays.com"]
 }
