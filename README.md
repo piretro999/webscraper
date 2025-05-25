@@ -75,6 +75,54 @@ pip install -r requirements.txt
 
 ---
 
+
+## 🔧 New Features (2025-05)
+
+- 🚀 PDF mode selector (with_links / no_links / image) with real-time GUI control.
+- 🎥 Embedded video preview in GUI (via imageio + PIL), linked to process actions.
+- 🔍 Automatic semantic or hash-based change detection with threshold.
+- 🔐 Secure PDF handling:
+  - JavaScript disabled during rendering (`--disable-javascript`)
+  - All PDF links removed in "no_links" mode (via PikePDF)
+  - PDF rasterization supported ("image" mode with PyMuPDF)
+- 🧠 Intelligent logging:
+  - Separate logs for normal process, critical events, and detection updates.
+  - Rotating log files with size limits.
+- 🛡️ Config validation with strict whitelisting and type checks.
+- 📁 All logs now stored in `/log/` with automated creation and permission management.
+
+
+## 🔐 Security Hardening (May 2025)
+
+The application now includes multiple defensive layers to ensure secure automation of regulatory web portals:
+
+### ✅ Chrome Launch Hardening
+- Uses `--user-data-dir` with **temporary isolated profiles**
+- Verifies `chrome_path` is in a hardcoded whitelist and exists physically
+- Only allows `--remote-debugging-port=9222` on `127.0.0.1`
+- Chrome launched in headless mode with multiple disabling flags (`popup-blocking`, `notifications`, `extensions`, etc.)
+
+### ✅ Config.json Validation
+- Strict value/type checking for keys like:
+  - `"pdf_mode"` ∈ ["with_links", "no_links", "image"]
+  - `"save_format"` ∈ ["pdf", "png"]
+  - `"log_level"` ∈ standard logging levels
+  - `"sites"` must be a dictionary
+
+### ✅ Path Traversal & File Safety
+- All output file paths are sanitized with `sanitize_filename()` and `safe_join()`
+- PDF output is verified, hashed (SHA256), and optionally rasterized
+- Optional saving of `.sha256` signature next to the PDF
+
+### ✅ Network Filtering
+- URLs must belong to an allowlist (`allowed_domains`)
+- IP-based URLs and suspicious paths (e.g. `../`, `%`, `<`, `>`) are automatically rejected
+
+### ✅ Logging Hygiene
+- All logs written to `/log/`, rotated with size limits
+- GUI displays only safe summaries, raw HTML optionally saved in debug mode only
+
+
 ## ▶️ How to Use
 
 ### Start the Web Scraper
