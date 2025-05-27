@@ -442,9 +442,6 @@ DEFAULT_CONFIG = {
     "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"  # <- NON modificabile dalla GUI
 }
 
-
-# CONFIG_FILE = "config.json"  # or an absolute path like os.path.join(BASE_DIR, "config.json")
-
 DEFAULT_CONFIG = {
     "video_autoplay": True,
     "volume": 100
