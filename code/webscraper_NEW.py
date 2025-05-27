@@ -31,6 +31,7 @@ AVAILABLE_LANGUAGES = ["it", "en", "fr", "de", "es", "sw"]
 
 # === Config ===
 CONFIG_FILE = "config.json"
+LOG_FILE ="process_log.txt"
 DEFAULT_CONFIG = {
     "csv_path": "",
     "html_save_path": "",
@@ -41,7 +42,7 @@ DEFAULT_CONFIG = {
     "enable_logs": True,
     "force_download": False,
     "use_debug_mode": False,
-    "log_file": "process_log.txt",
+    "log_file": LOG_FILE,
     "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "allowed_domains": ["ec.europa.eu", "agenziaentrate.gov.it"]
 }
@@ -437,10 +438,11 @@ DEFAULT_CONFIG = {
     "enable_logs": True,
     "force_download": False,
     "use_debug_mode": False,  # <- nuovo
-    "log_file": "process_log.txt",
+    "log_file": LOG_FILE,
     "use_debug_mode": False,   
     "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"  # <- NON modificabile dalla GUI
 }
+
 
 DEFAULT_CONFIG = {
     "video_autoplay": True,
@@ -854,7 +856,7 @@ def extract_last_updated_with_selenium(url, timeout):
     finally:
         driver.quit()
 
-def setup_secure_logging(log_file_path="process_log.txt", max_bytes=1048576, backup_count=5):
+def setup_secure_logging(log_file_path=LOG_FILE, max_bytes=1048576, backup_count=5):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     for handler in logger.handlers[:]:
