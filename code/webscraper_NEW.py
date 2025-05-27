@@ -30,7 +30,7 @@ from PIL import ImageTk
 AVAILABLE_LANGUAGES = ["it", "en", "fr", "de", "es", "sw"]
 
 # === Config ===
-CONFIG_PATH = "config.json"
+CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "csv_path": "",
     "html_save_path": "",
@@ -103,8 +103,8 @@ def validate_config(config):
 # Called by: __init__, load_sites_into_table, process_pages, save_config, save_debug_level
 # Calls: open, save_config
 def load_config():
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = json.load(f)
             return validate_config(config)
     else:
@@ -179,7 +179,7 @@ def save_config(cfg):
     Salva il file di configurazione solo se valido.
     """
     validated = validate_config(cfg)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(validated, f, indent=2, ensure_ascii=False)
 
 
@@ -414,7 +414,7 @@ def get_debug_driver(chrome_path):
 
 
 # Config file
-CONFIG_FILE = "config.json"
+# CONFIG_FILE = "config.json"
 
 # Logging Config
 logging.basicConfig(
@@ -443,7 +443,7 @@ DEFAULT_CONFIG = {
 }
 
 
-CONFIG_FILE = "config.json"  # or an absolute path like os.path.join(BASE_DIR, "config.json")
+# CONFIG_FILE = "config.json"  # or an absolute path like os.path.join(BASE_DIR, "config.json")
 
 DEFAULT_CONFIG = {
     "video_autoplay": True,
@@ -480,7 +480,7 @@ def load_config():
 # Output: [None]
 # Called by: save_config, save_debug_level
 # Calls: open
-def save_config_to_file(config_data, config_path="config.json"):
+def save_config_to_file(config_data, config_path=CONFIG_FILE):
     """
     Function: save_config_to_file
     Description: Function to save config to file.
@@ -2997,3 +2997,4 @@ Created on Tue Nov 26 14:37:32 2024
 
 @author: piret
 """
+
