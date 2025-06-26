@@ -1817,7 +1817,7 @@ class App:
     
         self.language_var = tk.StringVar(value=self.config.get("language", "en"))
         # Istanza senza canvas inizialmente
-        self.video_player = VideoPlayer(canvas=None, path="webscraperRobot.mp4")
+        self.video_player = VideoPlayer(canvas=None, path="Galora.versia.mp4")
 
         self.force_download_var = tk.BooleanVar(value=self.config.get("force_download", False))
         # Mappa modalità stringa → intero per il cursore
