@@ -56,16 +56,16 @@ The project is now called **Galora.versia**, and introduces a major new feature:
 ## 🖼️ Screenshots
 
 ### Tab 1 – Process Setup
-![Tab 1](resources/tab1_process_setup.png)
+![Tab 1](assets/tab1_process_setup.png)
 
 ### Tab 2 – Process Pages
-![Tab 2](resources/tab2_process_pages.png)
+![Tab 2](assets/tab2_process_pages.png)
 
 ### Tab 3 – Advanced Settings
-![Tab 3](resources/tab3_advanced_settings.png)
+![Tab 3](assets/tab3_advanced_settings.png)
 
 ### Tab 4 – VersioNice
-![Tab 4](resources/tab4_versionice.png)
+![Tab 4](assets/tab4_versionice.png)
 
 ---
 
