@@ -27,6 +27,8 @@ import fitz  # PyMuPDF
 from PIL import Image
 import imageio
 from PIL import ImageTk
+import io
+from tkinterdnd2 import TkinterDnD
 AVAILABLE_LANGUAGES = ["it", "en", "fr", "de", "es", "sw"]
 
 # === Config ===
@@ -134,19 +136,23 @@ def load_locale(lang="en"):
 locale = load_locale("en")
 
 # Configurazione del logging utilizzando la variabile 'locale'
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(locale.get("selenium_debuglog", "selenium_debug.log")),
-        logging.StreamHandler()
-    ]
-)
+#logging.basicConfig(
+#    level=logging.DEBUG,
+#    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+#    handlers=[
+#        logging.FileHandler(locale.get("selenium_debuglog", "selenium_debug.log")),
+#        logging.StreamHandler()
+#    ]
+#)
 # === Logging eventi critici separato ===
 base_dir = os.path.dirname(os.path.abspath(__file__))  # Percorso corrente del file
 log_dir = os.path.join(base_dir, "log")
 os.makedirs(log_dir, exist_ok=True)
 critical_log_path = os.path.join(log_dir, "critical_security.log")
+
+
+
+
 
 critical_handler = logging.FileHandler(critical_log_path, encoding="utf-8")
 critical_handler.setLevel(logging.WARNING)  # Solo WARNING, ERROR, CRITICAL
@@ -312,7 +318,7 @@ def is_chrome_debug_running(port=9222):
 # Output: [None]
 # Called by: get_debug_driver
 # Calls: FileNotFoundError, is_chrome_debug_running
-def launch_chrome_debug_if_needed(chrome_path, port=9222):
+def launch_chrome_debug_if_needed(chrome_path, port=9222, locale=None):
     """
     Avvia Chrome in modalità debug con profilo isolato temporaneo.
     Controlla se già in esecuzione con profilo autorizzato, altrimenti avvia nuovo e fa cleanup.
@@ -329,7 +335,8 @@ def launch_chrome_debug_if_needed(chrome_path, port=9222):
 
     # === CONTROLLO: Chrome già attivo sulla porta 9222? ===
     if is_chrome_debug_running(port):
-        logging.info("Porta di debug già in uso. Controllo processo.")
+        #logging.info("Porta di debug già in uso. Controllo processo.")
+        logging.debug(locale.get("debug_port_already_in_use_checking_process"))
         for proc in psutil.process_iter(['name', 'cmdline']):
             try:
                 if 'chrome' in proc.info['name'].lower():
@@ -340,7 +347,8 @@ def launch_chrome_debug_if_needed(chrome_path, port=9222):
                             logging.info(f"Chrome debug attivo con profilo: {active_dir}")
                             return
                         else:
-                            logging.warning("⚠️ Porta usata da Chrome con profilo sconosciuto/non isolato.")
+
+                            logging.debug(locale.get("debug_port_used_by_unknown_or_unisolated_profile"))
                             from tkinter import messagebox
                             messagebox.showwarning(
                                 "Sicurezza",
@@ -414,18 +422,6 @@ def get_debug_driver(chrome_path):
         raise RuntimeError(locale.get("ensure_chrome_started_with_debug_flag", "Assicurati che Chrome sia avviato correttamente con il flag --remote-debugging-port=9222")) from e
 
 
-# Config file
-# CONFIG_FILE = "config.json"
-
-# Logging Config
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(locale.get("selenium_debuglog", "selenium_debug.log")),
-        logging.StreamHandler()
-    ]
-)
 
 # Default configuration structure
 DEFAULT_CONFIG = {
@@ -492,32 +488,6 @@ def save_config_to_file(config_data, config_path=CONFIG_FILE):
     import json
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=4, ensure_ascii=False)
-
-
-# Function: save_config
-# Description: Function to save config.
-# Inputs: config
-# Output: [None]
-# Called by: load_config, on_language_change, save_debug_level
-# Calls: eval, float, len, load_config, open, print, save_config_to_file
-def save_config(config):
-    """
-    Function: save_config
-    Description: Function to save config.
-    Args:
-        config
-    Returns:
-        [None]
-    """
-    try:
-        # Garantisce la presenza di pdf_mode
-        if "pdf_mode" not in config:
-            config["pdf_mode"] = "with_links"
-
-        with open(CONFIG_FILE, "w") as file:
-            json.dump(config, file, indent=4)
-    except Exception as e:
-        print(locale.get("error_saving_config_file", f"Errore durante il salvataggio del file di configurazione: {e}"))
 
 
 # Function: write_log
@@ -869,8 +839,8 @@ def setup_secure_logging(log_file_path=LOG_FILE, max_bytes=1048576, backup_count
     console_handler.setFormatter(formatter)
     logger.addHandler(handler)
     logger.addHandler(console_handler)
-    logging.info("Logging configurato in modo sicuro e con rotazione.")
-
+    # logging.info("Logging configurato in modo sicuro e con rotazione.")
+    logging.warning(locale.get("debug_port_used_by_unknown_or_unisolated_profile"))
 def get_secure_chrome_options():
     options = Options()
     options.add_argument("--headless")
@@ -916,7 +886,9 @@ def close_chrome_debug(port=9222):
                 cmdline = ' '.join(proc.info['cmdline']).lower()
                 if f'--remote-debugging-port={port}' in cmdline:
                     proc.terminate()
-                    logging.info("Chrome debug terminato automaticamente.")
+                    # logging.info("Chrome debug terminato automaticamente.")
+                    logging.info(locale.get("chrome_debug_terminated_automatically"))
+
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
@@ -1018,7 +990,6 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
 
             url = row[0].strip()
             country_name = row[1].strip()
-            previous_signature = row[2].strip()
             current_signature = row[3].strip()
             if not is_url_safe(url):
                 warning_msg = locale.get("url_non_sicuro_ignorato", f"URL non sicuro ignorato: {url}").format(url=url)
@@ -1067,6 +1038,17 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
                         saved = save_page_as_pdf_with_selenium(url, filename, timeout, config["log_file"])
                         if saved:
                             logging.warning(f"[DEBUG CHECK] PDF_MODE={config.get('pdf_mode')} | FILE={filename} | SAVED={saved}")
+                            # Salva file TXT accanto al PDF, sempre e comunque
+                            if saved:
+                                try:
+                                    extracted_text = extract_text_from_pdf(filename)
+                                    txt_output_path = filename.replace(".pdf", ".txt")
+                                    with open(txt_output_path, "w", encoding="utf-8") as f:
+                                        f.write(extracted_text)
+                                    logging.info(f"[TXT] Creato file testo: {txt_output_path}")
+                                except Exception as e:
+                                    logging.warning(f"[TXT] Errore durante salvataggio del TXT per {filename}: {e}")
+
                             if config.get("pdf_mode", "with_links") == "no_links":
                                 sanitize_pdf_links(filename)
                             elif config.get("pdf_mode") == "image":
@@ -1098,6 +1080,16 @@ def process_pages(config, progress_table, progress_bar, progress_count, locale, 
                                         log_file=config["log_file"]
                                     )
                             if saved:
+                                # Salva file TXT accanto al PDF, sempre e comunque
+                                if saved:
+                                    try:
+                                        extracted_text = extract_text_from_pdf(filename)
+                                        txt_output_path = filename.replace(".pdf", ".txt")
+                                        with open(txt_output_path, "w", encoding="utf-8") as f:
+                                            f.write(extracted_text)
+                                        logging.info(f"[TXT] Creato file testo: {txt_output_path}")
+                                    except Exception as e:
+                                        logging.warning(f"[TXT] Errore durante salvataggio del TXT per {filename}: {e}")
                                 logging.warning(f"[DEBUG CHECK] PDF_MODE={config.get('pdf_mode')} | FILE={filename} | SAVED={saved}")
                                 if config.get("pdf_mode", "with_links") == "no_links":
                                     sanitize_pdf_links(filename)
@@ -1727,6 +1719,86 @@ def build_treeview(parent, columns, column_width=150, minwidth=100, locale=None,
 
     return tree
 
+def extract_text_from_pdf(pdf_path, locale=None):
+    try:
+        doc = fitz.open(pdf_path)
+        text = "\n".join([page.get_text() for page in doc])
+        return text
+    except Exception as e:
+        message = "Error extracting PDF text."
+        if locale:
+            message = locale.get("pdf_extraction_error", message)
+        logging.error(f"{message}: {e}")
+        return ""
+
+
+def diff_texts_colored(old_text, new_text):
+    diff = difflib.ndiff(old_text.splitlines(), new_text.splitlines())
+    result = []
+    for line in diff:
+        if line.startswith("  "):
+            result.append(("black", line[2:]))
+        elif line.startswith("- "):
+            result.append(("red", line[2:]))
+        elif line.startswith("+ "):
+            result.append(("darkgreen", line[2:]))
+    return result
+def build_changes_index(base_path):
+    changes_dir = os.path.join(base_path, "changes")
+    os.makedirs(changes_dir, exist_ok=True)
+    output = {}
+
+    # 🔍 Costruisce elenco completo .txt già presenti
+    existing_txt_paths = set()
+    for root, _, files in os.walk(base_path):
+        for file in files:
+            if file.endswith(".txt"):
+                relative_txt = os.path.relpath(os.path.join(root, file), base_path)
+                existing_txt_paths.add(relative_txt.replace("\\", "/"))
+
+    for root, dirs, files in os.walk(base_path):
+        if root.startswith(changes_dir):
+            continue
+        for file in files:
+            if file.endswith(".pdf"):
+                pdf_path = os.path.join(root, file)
+                relative_pdf = os.path.relpath(pdf_path, base_path).replace("\\", "/")
+                timestamp = datetime.fromtimestamp(os.path.getmtime(pdf_path)).isoformat()
+
+                txt_path = relative_pdf.replace(".pdf", ".txt")
+                full_txt_path = os.path.join(base_path, txt_path)
+
+                # ✅ VERIFICA tramite lista pre-esistente
+                if txt_path in existing_txt_paths:
+                    logging.info(f"[SKIP] File .txt già presente: {txt_path}")
+                else:
+                    try:
+                        text = extract_text_from_pdf(pdf_path)
+                        os.makedirs(os.path.dirname(full_txt_path), exist_ok=True)
+                        with open(full_txt_path, "w", encoding="utf-8") as f:
+                            f.write(text)
+                        logging.info(f"[CREATO] {full_txt_path}")
+                    except Exception as e:
+                        logging.error(f"Errore nell'estrazione/scrittura di {file}: {e}")
+                        continue
+
+                url = os.path.basename(file).replace(".pdf", "")
+                country = os.path.basename(os.path.dirname(root))
+
+                if url not in output:
+                    output[url] = {"country": country, "versions": []}
+
+                output[url]["versions"].append({
+                    "timestamp": timestamp,
+                    "pdf_path": relative_pdf,
+                    "txt_path": txt_path
+                })
+
+    output_path = os.path.join(changes_dir, "changes.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -1771,15 +1843,18 @@ class App:
 
         self.tab1 = ttk.Frame(self.notebook)
         self.tab2 = ttk.Frame(self.notebook)
+        self.tab4 = ttk.Frame(self.notebook)
         self.tab3 = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab1, text=self.locale.get("process_setup", "Process Setup"))
         self.notebook.add(self.tab2, text=self.locale.get("process_pages", "Process Pages"))
+        # self.notebook.add(self.tab4, text=self.locale.get("versioNice", "Versioni"))
         self.notebook.add(self.tab3, text=self.locale.get("advanced_settings", "Advanced Settings"))
-
         self.setup_tab1()
         self.setup_tab2()
+        self.setup_tab4()
         self.setup_tab3()
+
 
     def refresh_ui_texts(self):
         widgets_to_update = {
@@ -1811,25 +1886,53 @@ class App:
             if widget:
                 widget.config(text=self.locale.get(locale_key, f"[{locale_key}]"))
 
+        # TAB 1 — CSV Table
         if hasattr(self, 'progress_table'):
             for col_id in self.progress_table["columns"]:
                 self.progress_table.heading(col_id, text=self.locale.get(col_id.lower(), col_id))
-                
-        # TAB 1 — CSV Table
+
         if hasattr(self, 'csv_table') and hasattr(self, 'csv_columns'):
-            progress_keys = ["url", "country", "previously_detected_date", "last_updated"]  # come Tab 2, ma ordinati per Tab 1
+            progress_keys = ["url", "country", "previously_detected_date", "last_updated"]
             for i, col in enumerate(self.csv_columns):
                 key = progress_keys[i] if i < len(progress_keys) else col.lower().replace(" ", "_")
                 self.csv_table.heading(col, text=self.locale.get(key, col))
 
+        # ✅ TAB 1 – Etichetta "Modalità PDF"
+        if hasattr(self, 'label_pdf_mode'):
+            self.label_pdf_mode.config(text=self.locale.get("pdf_mode", "Modalità PDF"))
+            
+            
 
-        # TAB 2
+        if hasattr(self, 'label_save_path'):
+            self.label_save_path.config(text=self.locale.get("select_save_path", "Select Save Directory:"))
+            
+        if hasattr(self, 'pdf_mode_status_label') and hasattr(self, 'pdf_mode_slider'):
+            self.pdf_mode_status_label.config(
+                text=f"{self.locale.get('pdf_mode', 'Modalità PDF')}: {self.get_pdf_mode_label(self.pdf_mode_slider.get())}"
+            )
+
+
+        # ✅ Tab 1 – Aggiorna etichetta dinamica PDF
+        if hasattr(self, 'pdf_mode_scale') and hasattr(self, 'on_pdf_mode_change'):
+            try:
+                current_value = int(self.pdf_mode_scale.get())
+                self.on_pdf_mode_change(current_value)
+            except Exception as e:
+                logging.warning(f"Errore aggiornando etichetta PDF dinamica: {e}")
+
+
+        # TAB 2 — Progress Table
         if hasattr(self, 'progress_table'):
-            progress_keys = ["url", "country", "last_updated", "status"]  # ✅ corretto ora
+            progress_keys = ["url", "country", "last_updated", "status"]
             for i, col in enumerate(self.progress_table["columns"]):
                 self.progress_table.heading(col, text=self.locale.get(progress_keys[i], col))
-                
-        # TAB 3
+
+        # ✅ TAB 2 – Timeout
+        if hasattr(self, 'timeout_label'):
+            self.timeout_label.config(text=self.locale.get("timeout_label", "Timeout (s):"))
+
+
+        # TAB 3 — Site Table
         if hasattr(self, 'site_table'):
             site_keys = [
                 "site", "method", "selector", "date_format", "language",
@@ -1838,15 +1941,26 @@ class App:
             for i, col in enumerate(self.site_table["columns"]):
                 self.site_table.heading(col, text=self.locale.get(site_keys[i], col))
 
-
-
-
+        # Notebook tab labels
         if hasattr(self, 'notebook'):
             self.notebook.tab(0, text=self.locale.get("process_setup", "Process Setup"))
             self.notebook.tab(1, text=self.locale.get("process_pages", "Process Pages"))
-            self.notebook.tab(2, text=self.locale.get("advanced_settings", "Advanced Settings"))
+            self.notebook.tab(2, text=self.locale.get("versioNice", "Versioni"))
+            self.notebook.tab(3, text=self.locale.get("advanced_settings", "Advanced Settings"))
 
         self.root.title(self.locale.get("web_scraper_and_updater", "Web Scraper and Updater"))
+
+
+
+        # ✅ TAB 4 – Bottone "Aggiorna stato"
+        if hasattr(self, 'update_versions_btn'):
+            self.update_versions_btn.config(text=self.locale.get("update_state", "Aggiorna stato"))
+
+        # ✅ TAB 4 – Treeview header
+        if hasattr(self, 'versions_tree'):
+            self.versions_tree.heading("#0", text=self.locale.get("versions_tree", "Versioni disponibili"))
+
+        
 
 
     def setup_tab1(self):
@@ -1889,7 +2003,8 @@ class App:
         self.button_browse_csv.pack(anchor="w", pady=2)
     
         # Output directory
-        tk.Label(content_frame, text=self.locale.get("select_save_path", "Select Save Directory:")).pack(anchor="w", pady=(10, 0))
+        self.label_save_path = tk.Label(content_frame, text=self.locale.get("select_save_path", "Select Save Directory:"))
+        self.label_save_path.pack(anchor="w", pady=(10, 0))
         self.save_path_var = tk.StringVar(value=self.config.get("html_save_path", ""))
         tk.Entry(content_frame, textvariable=self.save_path_var, width=50).pack(anchor="w", pady=2)
         self.button_browse_save = tk.Button(content_frame, text=self.locale.get("browse", "Browse"), command=self.select_save_path)
@@ -1904,11 +2019,11 @@ class App:
         )
         self.checkbox_force_download.pack(anchor="w", pady=5)
 
-        # Etichetta sopra il cursore
-        tk.Label(
+        self.label_pdf_mode = tk.Label(
             content_frame,
             text=self.locale.get("pdf_mode", "Modalità PDF")
-        ).pack(anchor="w", pady=(5, 0))
+        )
+        self.label_pdf_mode.pack(anchor="w", pady=(5, 0))
         
         # Etichetta dinamica che mostra la modalità selezionata
         self.pdf_mode_label = tk.Label(content_frame)
@@ -1951,7 +2066,11 @@ class App:
             columns=[],
             locale=self.locale
         )
-    
+
+        # Abilita il drag and drop su csv_table
+        self.root.drop_target_register('*')
+        self.root.dnd_bind('<<Drop>>', self.on_treeview_file_drop) 
+        
         # Pulsanti gestione tabella
         table_controls_frame = ttk.Frame(self.tab1)
         table_controls_frame.pack(fill="x", pady=10)
@@ -1996,12 +2115,31 @@ class App:
                 self.locale.get("select_row_to_reprocess", "Seleziona almeno una riga da rielaborare nel Tab 2")
             )
             return
-    
+
         from urllib.parse import urlparse
         from selenium import webdriver
         from selenium.webdriver.chrome.service import Service
         from selenium.webdriver.chrome.options import Options
-    
+
+        # Recupera directory con timestamp dal file CSV più recente
+        output_dir_csv = self.config.get("output_csv_path")
+        if not output_dir_csv or not os.path.exists(output_dir_csv):
+            messagebox.showerror("Errore", "Directory output CSV non trovata.")
+            return
+
+        output_files = sorted(
+            [f for f in os.listdir(output_dir_csv) if f.startswith("output_") and f.endswith(".csv")],
+            reverse=True
+        )
+        if not output_files:
+            messagebox.showerror("Errore", "Nessun file output_*.csv trovato nella directory output CSV.")
+            return
+
+        timestamp_dir = output_files[0].replace("output_", "").replace(".csv", "")
+        output_dir_with_timestamp = os.path.join(output_dir_csv, timestamp_dir)
+        if not os.path.exists(output_dir_with_timestamp):
+            os.makedirs(output_dir_with_timestamp, exist_ok=True)
+
         for item_id in selected:
             row_values = self.progress_table.item(item_id, "values")
             record = {
@@ -2009,19 +2147,19 @@ class App:
                 "Nome Nazione": row_values[1],
                 "Data Ultimo Aggiornamento": row_values[2]
             }
-    
+
             parsed_url = urlparse(record["Url"])
             domain = parsed_url.netloc.replace("www.", "")
             site_configs = load_config().get("sites", {})
             site_config = site_configs.get(domain)
-    
+
             if not site_config:
                 messagebox.showerror(
                     self.locale.get("error", "Errore"),
                     f"{self.locale.get('config_not_found_for_domain', 'Nessuna configurazione trovata per il dominio')}: {domain}"
                 )
                 continue
-    
+
             try:
                 options = Options()
                 options.add_argument("--headless")
@@ -2030,50 +2168,32 @@ class App:
                 options.add_argument("--window-size=1920,1080")
                 options.add_argument("--disable-blink-features=AutomationControlled")
                 options.add_argument("--disable-javascript")
-                # options.add_argument("--no-sandbox")
                 driver = webdriver.Chrome(
                     service=Service(os.path.join(get_base_dir(), "chromedriver.exe")),
                     options=options
                 )
-    
+
                 driver.get(record["Url"])
                 time.sleep(self.config.get("timeout", 5))
-    
+
                 status = ""
                 current_signature = record["Data Ultimo Aggiornamento"]
-    
-                if site_config.get("update_method", "date") == "detection":
+
+                update_method = site_config.get("update_method", "date")
+
+                do_reprocess = False
+                if update_method == "detection":
                     changed, new_signature, reason, similarity = detect_page_change(
                         driver, site_config, current_signature
                     )
                     record["Data Ultimo Aggiornamento"] = new_signature
-                    if changed or self.force_download_var.get():
-                        pdf_filename = os.path.join(
-                            self.save_path_var.get(),
-                            sanitize_filename(f"{record['Nome Nazione']}_{domain}.pdf")
-                        )
-                        saved = save_page_as_pdf_with_selenium(
-                            record["Url"],
-                            pdf_filename,
-                            self.config["timeout"],
-                            debug_mode=self.config.get("debug_mode", False),
-                            log_file=self.config["log_file"]
-                        )
-                        if saved:
-                            if self.config.get("pdf_mode", "with_links") == "no_links":
-                                sanitize_pdf_links(pdf_filename)
-                            elif self.config.get("pdf_mode") == "image":
-                                logging.info(f"[RASTER] Modalità 'PDF immagine' attiva per: {pdf_filename}")
-                                image_paths = convert_pdf_to_images_fitz(pdf_filename)
-                                if image_paths:
-                                    replace_pdf_with_images_fitz(pdf_filename, image_paths)
-                                else:
-                                    logging.warning(f"[RASTER] Conversione PDF→immagine fallita, file originale mantenuto: {pdf_filename}")
-
-                        status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
-                    else:
-                        status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
-    
+                    do_reprocess = changed or self.force_download_var.get()
+                elif update_method in ("semantic", "both"):
+                    changed, new_signature, reason, similarity = detect_page_change(
+                        driver, site_config, current_signature, method=update_method
+                    )
+                    record["Data Ultimo Aggiornamento"] = new_signature
+                    do_reprocess = changed or self.force_download_var.get()
                 else:
                     new_date = extract_date(driver, site_config)
                     if new_date in [
@@ -2081,69 +2201,86 @@ class App:
                         self.locale.get("date_not_parsed", "DATE_NOT_PARSED")
                     ]:
                         status = self.locale.get("date_extraction_error", "Errore nella lettura della data")
+                        do_reprocess = False
                     else:
                         new_date_str = new_date.strftime("%Y-%m-%d %H:%M:%S")
                         record["Data Ultimo Aggiornamento"] = new_date_str
-    
-                        if (new_date_str != current_signature) or self.force_download_var.get():
-                            pdf_filename = os.path.join(
-                                self.save_path_var.get(),
-                                sanitize_filename(f"{record['Nome Nazione']}_{domain}.pdf")
-                            )
-                            saved = save_page_as_pdf_with_selenium(
-                                record["Url"],
-                                pdf_filename,
-                                self.config["timeout"],
-                                debug_mode=self.config.get("debug_mode", False),
-                                log_file=self.config["log_file"]
-                            )
-                            status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato") if saved else self.locale.get("pdf_error", "Errore PDF")
-                        else:
-                            status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
-    
+                        do_reprocess = (new_date_str != current_signature) or self.force_download_var.get()
+
+                if do_reprocess:
+                    pdf_filename = os.path.join(
+                        output_dir_with_timestamp,
+                        sanitize_filename(f"{record['Nome Nazione']}_{domain}.pdf")
+                    )
+                    saved = save_page_as_pdf_with_selenium(
+                        record["Url"],
+                        pdf_filename,
+                        self.config["timeout"],
+                        debug_mode=self.config.get("debug_mode", False),
+                        log_file=self.config["log_file"]
+                    )
+                    if saved:
+                        try:
+                            extracted_text = extract_text_from_pdf(pdf_filename)
+                            txt_output_path = pdf_filename.replace(".pdf", ".txt")
+                            with open(txt_output_path, "w", encoding="utf-8") as f:
+                                f.write(extracted_text)
+                            logging.info(f"[TXT] Creato file testo: {txt_output_path}")
+                        except Exception as e:
+                            logging.warning(f"[TXT] Errore durante salvataggio del TXT per {pdf_filename}: {e}")
+
+                        if self.config.get("pdf_mode", "with_links") == "no_links":
+                            sanitize_pdf_links(pdf_filename)
+                        elif self.config.get("pdf_mode", "image"):
+                            logging.info(f"[RASTER] Modalità 'PDF immagine' attiva per: {pdf_filename}")
+                            image_paths = convert_pdf_to_images_fitz(pdf_filename)
+                            if image_paths:
+                                replace_pdf_with_images_fitz(pdf_filename, image_paths)
+                            else:
+                                logging.warning(f"[RASTER] Conversione PDF→immagine fallita, file originale mantenuto: {pdf_filename}")
+
+                        status = self.locale.get("updated_and_pdf_saved", "Aggiornato e PDF salvato")
+                    else:
+                        status = self.locale.get("pdf_error", "Errore PDF")
+                else:
+                    if not status:
+                        status = self.locale.get("no_update_needed", "Nessun aggiornamento necessario")
+
                 driver.quit()
-    
-                # Aggiorna tabella GUI
+
                 self.progress_table.item(item_id, values=(
                     record["Url"],
                     record["Nome Nazione"],
                     record["Data Ultimo Aggiornamento"],
                     status
                 ))
-    
-                # Aggiorna CSV
-                output_dir = self.config.get("output_csv_path")
-                if output_dir and os.path.exists(output_dir):
-                    output_files = sorted(
-                        [f for f in os.listdir(output_dir) if f.startswith("output_") and f.endswith(".csv")],
-                        reverse=True
-                    )
-                    if output_files:
-                        output_path = os.path.join(output_dir, output_files[0])
-                        with open(output_path, "r", encoding="utf-8") as f:
-                            reader = list(csv.reader(f, delimiter=';'))
-                            headers = reader[0]
-                            rows = reader[1:]
-    
-                        url_index = headers.index(self.locale.get("url", "Url"))
-                        date_index = headers.index(self.locale.get("last_updated_date", "Data Ultimo Aggiornamento"))
-    
-                        for i, row in enumerate(rows):
-                            if row[url_index].strip() == record["Url"]:
-                                rows[i][date_index] = record["Data Ultimo Aggiornamento"]
-                                break
-    
-                        with open(output_path, "w", encoding="utf-8", newline="") as f:
-                            writer = csv.writer(f, delimiter=';')
-                            writer.writerow(headers)
-                            writer.writerows(rows)
-    
+
+                if output_files:
+                    output_path = os.path.join(output_dir_csv, output_files[0])
+                    with open(output_path, "r", encoding="utf-8") as f:
+                        reader = list(csv.reader(f, delimiter=';'))
+                        headers = reader[0]
+                        rows = reader[1:]
+
+                    url_index = headers.index(self.locale.get("url", "Url"))
+                    date_index = headers.index(self.locale.get("last_updated_date", "Data Ultimo Aggiornamento"))
+
+                    for i, row in enumerate(rows):
+                        if row[url_index].strip() == record["Url"]:
+                            rows[i][date_index] = record["Data Ultimo Aggiornamento"]
+                            break
+
+                    with open(output_path, "w", encoding="utf-8", newline="") as f:
+                        writer = csv.writer(f, delimiter=';')
+                        writer.writerow(headers)
+                        writer.writerows(rows)
+
             except Exception as e:
                 logging.error(f"Errore durante la rielaborazione per {record['Url']}: {e}")
                 messagebox.showerror(
                     self.locale.get("error", "Errore"),
-                    f"{self.locale.get('error_during_process_e', 'Errore durante il processo')}: {e}"
-                )
+                    f"{self.locale.get('error_during_process_e', 'Errore durante il processo')}: {e}")
+
 
     def on_language_change(self, event=None):
         new_lang = self.language_var.get()
@@ -2159,42 +2296,67 @@ class App:
             self.csv_path = csv_path
             self.csv_path_var.set(csv_path)
             self.load_csv()
-            
-    def load_csv(self):
-        """
-        Carica il CSV nella tabella Treeview (Tab 1), rigenerando la tabella
-        con intestazioni fisse e localizzate. Lettura posizionale.
-        """
+
+    def load_csv(self, path=None):
+        if path is None:
+            path = self.csv_path_var.get()
+    
+        if not os.path.isfile(path):
+            logging.error(f"File CSV non trovato: {path}")
+            return
+    
         try:
-            data, fieldnames = read_csv(self.csv_path)
+            with open(path, newline='', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile, delimiter=';')
+                rows = list(reader)
     
-            # Salva i nomi fissi delle colonne
-            self.csv_columns = fieldnames
+            if not rows:
+                messagebox.showwarning("CSV vuoto", "Il file CSV è vuoto.")
+                return
     
-            # Applica localizzazione alle intestazioni
-            localized_headers = [
-                self.locale.get(fn.lower().replace(" ", "_"), fn) for fn in self.csv_columns
-            ]
+            headers = rows[0]
+            self.csv_columns = headers
     
-            # Ricostruisci la tabella Treeview
-            self.csv_table = build_treeview(
-                parent=self.csv_table_frame,
-                columns=self.csv_columns,
-                locale=self.locale,
-                locale_keys=self.csv_columns
-            )
-            self.csv_table.bind("<Double-1>", self.edit_cell)
-            # Inserisci le righe (posizionali)
-            for row in data:
-                if len(row) >= len(self.csv_columns):
-                    values = row[:len(self.csv_columns)]
-                    self.csv_table.insert("", "end", values=values)
+            # Cancella contenuto esistente
+            for col in self.csv_table["columns"]:
+                self.csv_table.heading(col, text="")  # reset intestazioni
+            self.csv_table.delete(*self.csv_table.get_children())
+    
+            # Aggiorna colonne
+            self.csv_table["columns"] = headers
+            for col in headers:
+                self.csv_table.heading(col, text=col)
+                self.csv_table.column(col, width=120)
+    
+            # Aggiungi righe
+            for row in rows[1:]:
+                self.csv_table.insert("", "end", values=row)
+    
+            # Salva il percorso attuale
+            self.csv_path = path
+            self.csv_path_var.set(path)
+    
+            logging.info(f"CSV caricato correttamente: {path}")
     
         except Exception as e:
             logging.error(f"Errore durante il caricamento del CSV: {e}")
-            messagebox.showerror("Errore", f"Errore durante il caricamento del CSV:\n{e}")
+            messagebox.showerror("Errore", f"Impossibile caricare il CSV:\n{e}")
     
-    
+
+            
+
+    def on_treeview_file_drop(self, event):
+        try:
+            path = event.data.strip('{}')  # Rimuove eventuali {} attorno al path
+            if os.path.isfile(path) and path.endswith(".csv"):
+                self.csv_path_var.set(path)
+                self.load_csv(path)
+            else:
+                messagebox.showerror("Errore", "Il file trascinato non è un file CSV valido.")
+        except Exception as e:
+            logging.error(f"Errore durante il drop del file CSV: {e}")
+            messagebox.showerror("Errore", str(e))
+
 
     def setup_tab2(self):
         """Configura la scheda Process Pages."""
@@ -2942,6 +3104,316 @@ class App:
         logging.info(locale.get("updated_cell_in_row_rowid_column_co", f"Updated cell in row {row_id}, column {col_index}: {new_value}"))
 
 
+    def setup_tab4(self):
+        self.pdf_zoom = 1.0
+        self.current_pdf_page = 0
+        self.total_pdf_pages = 1
+    
+        self.tab4 = ttk.Frame(self.notebook)
+        self.notebook.insert(2, self.tab4, text=self.locale.get("versioNice", "Versioni"))
+    
+        # ✅ Intestazione con selettore lingua
+        header_frame = ttk.Frame(self.tab4)
+        header_frame.pack(fill="x", pady=5, padx=10)
+    
+    
+        language_menu = ttk.Combobox(
+            header_frame,
+            textvariable=self.language_var,
+            values=AVAILABLE_LANGUAGES,
+            state="readonly",
+            width=6
+        )
+        language_menu.pack(side="right", padx=5)
+        language_menu.bind("<<ComboboxSelected>>", self.on_language_change)
+    
+        top_frame = ttk.Frame(self.tab4)
+        top_frame.pack(fill="x", padx=10, pady=5)
+    
+        self.update_versions_btn = tk.Button(
+            top_frame,
+            text=self.locale.get("update_state", "Aggiorna stato"),
+            command=self.aggiorna_stato_versioni
+        )
+        self.update_versions_btn.pack(side="left")
+    
+        center_frame = ttk.Frame(self.tab4)
+        center_frame.pack(fill="both", expand=True, padx=10, pady=5)
+    
+        self.versions_tree = ttk.Treeview(center_frame)
+        self.versions_tree.heading("#0", text=self.locale.get("versions_tree", "Versioni disponibili"))
+        self.versions_tree.bind("<Double-1>", self.on_select_version)
+        self.versions_tree.pack(side="left", fill="both", expand=False)
+    
+        # Canvas PDF con scroll e zoom
+        pdf_frame = ttk.Frame(center_frame)
+        pdf_frame.pack(side="left", fill="both", expand=True, padx=5)
+    
+        zoom_controls = ttk.Frame(pdf_frame)
+        zoom_controls.pack(side="top", fill="x")
+    
+        self.zoom_in_btn = ttk.Button(zoom_controls, text="+", command=self.zoom_in)
+        self.zoom_in_btn.pack(side="left")
+    
+        self.zoom_out_btn = ttk.Button(zoom_controls, text="-", command=self.zoom_out)
+        self.zoom_out_btn.pack(side="left")
+    
+        self.prev_page_btn = ttk.Button(zoom_controls, text="↑", command=self.pagina_su)
+        self.prev_page_btn.pack(side="left")
+    
+        self.next_page_btn = ttk.Button(zoom_controls, text="↓", command=self.pagina_giu)
+        self.next_page_btn.pack(side="left")
+    
+        canvas_frame = ttk.Frame(pdf_frame)
+        canvas_frame.pack(side="top", fill="both", expand=True)
+    
+        self.pdf_viewer_canvas = tk.Canvas(canvas_frame, bg="white")
+        self.pdf_viewer_canvas.bind("<Button-1>", lambda e: self.pdf_viewer_canvas.focus_set())
+        self.pdf_viewer_canvas.grid(row=0, column=0, sticky="nsew")
+    
+        self.pdf_scroll_y = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.pdf_viewer_canvas.yview)
+        self.pdf_scroll_y.grid(row=0, column=1, sticky="ns")
+        self.pdf_scroll_x = ttk.Scrollbar(canvas_frame, orient="horizontal", command=self.pdf_viewer_canvas.xview)
+        self.pdf_scroll_x.grid(row=1, column=0, sticky="ew")
+    
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
+    
+        self.pdf_viewer_canvas.config(yscrollcommand=self.pdf_scroll_y.set, xscrollcommand=self.pdf_scroll_x.set)
+    
+
+        # Frame dedicato al box di testo + scrollbar (colonna destra)
+        right_frame = ttk.Frame(center_frame, width=250)
+        right_frame.pack(side="right", fill="y", padx=(5, 0))
+        
+        self.text_diff_box = tk.Text(right_frame, wrap="word", width=60)
+        self.text_diff_box.pack(side="left", fill="both", expand=True)
+        
+        scrollbar = ttk.Scrollbar(right_frame, command=self.text_diff_box.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.text_diff_box.config(yscrollcommand=scrollbar.set)    
+        self.pdf_zoom = 1.0
+        self.versione_corrente_pdf = None
+    
+        base_path = self.save_path_var.get()
+        self.carica_treeview_versioni(base_path)
+
+
+    def zoom_in(self):
+        if not hasattr(self, "versione_corrente_pdf") or not self.versione_corrente_pdf:
+            #logging.warning("Zoom ignorato: nessun PDF selezionato.")
+            logging.warning(locale.get("zoom_skipped_no_pdf_selected"))
+            return
+        self.pdf_zoom += 0.2
+        self.visualizza_pdf(self.versione_corrente_pdf)
+    
+    def zoom_out(self):
+        if not hasattr(self, "versione_corrente_pdf") or not self.versione_corrente_pdf:
+            logging.warning("Zoom ignorato: nessun PDF selezionato.")
+            return
+        self.pdf_zoom = max(0.2, self.pdf_zoom - 0.2)
+        self.visualizza_pdf(self.versione_corrente_pdf)
+
+
+    def pagina_su(self):
+        try:
+            self.pdf_viewer_canvas.yview_scroll(-3, "units")  # Scrolla verso l'alto
+        except Exception as e:
+            logging.warning(f"Errore scroll pagina su: {e}")
+    
+    def pagina_giu(self):
+        try:
+            self.pdf_viewer_canvas.yview_scroll(3, "units")  # Scrolla verso il basso
+        except Exception as e:
+            logging.warning(f"Errore scroll pagina giù: {e}")
+
+
+    def _on_mousewheel(self, event):
+        self.pdf_viewer_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    
+    def _on_shift_mousewheel(self, event):
+        self.pdf_viewer_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+
+    def aggiorna_stato_versioni(self):
+        try:
+            base_path = self.save_path_var.get()
+            build_changes_index(base_path)
+
+            messagebox.showinfo(
+                self.locale.get("update_complete", "Aggiornamento completato"),
+                self.locale.get("changes_json_created", "File changes.json aggiornato.")
+            )
+
+            self.carica_treeview_versioni(base_path)
+
+        except Exception as e:
+            messagebox.showerror(self.locale.get("error_title", "Errore"), str(e))
+
+    def carica_treeview_versioni(self, base_path):
+        changes_path = os.path.join(base_path, "changes", "changes.json")
+        if os.path.exists(changes_path):
+            with open(changes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            self.versions_tree.delete(*self.versions_tree.get_children())
+
+            for url, info in data.items():
+                country = info.get("country", "Unknown")
+                versions = info.get("versions", [])
+
+                parent = self.versions_tree.insert("", "end", text=f"{country} - {url}")
+
+                for version in sorted(versions, key=lambda v: v["timestamp"]):
+                    label = datetime.fromisoformat(version["timestamp"]).strftime("%Y-%m-%d %H:%M")
+                    self.versions_tree.insert(
+                        parent,
+                        "end",
+                        text=label,
+                        values=(version["pdf_path"], version["txt_path"])
+                    )
+                self.versions_tree.item(parent, open=True)
+
+    def on_select_version(self, event):
+        selected = self.versions_tree.selection()
+        if not selected:
+            return
+        item_id = selected[0]
+        parent_id = self.versions_tree.parent(item_id)
+    
+        if parent_id:
+            relative_pdf_path = self.versions_tree.item(item_id, "values")[0]
+            relative_txt_path = self.versions_tree.item(item_id, "values")[1]
+    
+            self.versione_corrente = relative_txt_path
+            self.versione_corrente_pdf = relative_pdf_path
+            self.visualizza_pdf(relative_pdf_path)
+    
+            base_dir = self.save_path_var.get()
+            full_txt_path = os.path.join(base_dir, relative_txt_path)
+    
+            # Reset casella testo
+            self.text_diff_box.delete("1.0", "end")
+    
+            # Prova a fare il diff con la versione precedente
+            siblings = self.versions_tree.get_children(parent_id)
+            idx = siblings.index(item_id)
+            if idx > 0:
+                prev_item = siblings[idx - 1]
+                prev_txt = self.versions_tree.item(prev_item, "values")[1]
+                try:
+                    with open(os.path.join(base_dir, prev_txt), "r", encoding="utf-8") as f:
+                        old_text = f.read()
+                    with open(full_txt_path, "r", encoding="utf-8") as f:
+                        new_text = f.read()
+                    self.confronta_testi(old_text, new_text)
+                    self.text_diff_box.insert("end", "\n\n--- Versione selezionata completa ---\n\n" + new_text)
+                except Exception as e:
+                    logging.warning(f"Errore confronto versioni: {e}")
+            else:
+                # Nessuna versione precedente: mostra solo testo attuale
+                try:
+                    with open(full_txt_path, "r", encoding="utf-8") as f:
+                        new_text = f.read()
+                    self.text_diff_box.insert("end", new_text)
+                except Exception as e:
+                    logging.warning(f"Errore caricamento versione: {e}")
+
+
+
+
+    def visualizza_pdf_pagina(self, relative_path, page_number=0):
+        try:
+            self.pdf_viewer_canvas.delete("all")
+            full_path = os.path.join(self.save_path_var.get(), relative_path)
+            if not relative_path or not self.save_path_var.get():
+                logging.error(locale.get("missing_base_or_relative_pdf_path"))
+
+                return            
+            doc = fitz.open(full_path)
+    
+            if page_number < 0:
+                page_number = 0
+            elif page_number >= len(doc):
+                page_number = len(doc) - 1
+    
+            self.current_pdf_page = page_number
+            self.total_pdf_pages = len(doc)
+    
+            zoom = self.pdf_zoom
+            mat = fitz.Matrix(zoom, zoom)
+            page = doc.load_page(page_number)
+            pix = page.get_pixmap(matrix=mat)
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+    
+            img_tk = ImageTk.PhotoImage(img)
+            self.pdf_viewer_canvas.image = img_tk
+            self.pdf_viewer_canvas.create_image(0, 0, anchor="nw", image=img_tk)
+            self.pdf_viewer_canvas.config(scrollregion=(0, 0, img.width, img.height))
+    
+        except Exception as e:
+            messagebox.showerror(self.locale.get("error_loading_pdf", "Errore caricamento PDF"), str(e))
+
+
+
+
+
+    def confronta_testi(self, old_text, new_text):
+        self.text_diff_box.delete("1.0", "end")
+        diff = difflib.ndiff(old_text.splitlines(), new_text.splitlines())
+        for line in diff:
+            if line.startswith("  "):
+                self.text_diff_box.insert("end", line[2:] + "\n", ("common",))
+            elif line.startswith("- "):
+                self.text_diff_box.insert("end", line[2:] + "\n", ("removed",))
+            elif line.startswith("+ "):
+                self.text_diff_box.insert("end", line[2:] + "\n", ("added",))
+        self.text_diff_box.tag_config("common", foreground="black")
+        self.text_diff_box.tag_config("removed", foreground="red")
+        self.text_diff_box.tag_config("added", foreground="darkgreen")
+
+
+    def visualizza_pdf(self, relative_path):
+        try:
+            base_path = self.save_path_var.get()
+            if not base_path or not relative_path:
+                logging.error("Percorso base o relativo PDF mancante.")
+                return
+    
+            self.pdf_viewer_canvas.delete("all")
+            full_path = os.path.join(base_path, relative_path)
+    
+            doc = fitz.open(full_path)
+            zoom = self.pdf_zoom
+            mat = fitz.Matrix(zoom, zoom)
+    
+            images = []
+            total_height = 0
+            max_width = 0
+    
+            for page in doc:
+                pix = page.get_pixmap(matrix=mat)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                images.append(img)
+                total_height += img.height
+                max_width = max(max_width, img.width)
+    
+            combined = Image.new("RGB", (max_width, total_height), "white")
+    
+            y_offset = 0
+            for img in images:
+                combined.paste(img, (0, y_offset))
+                y_offset += img.height
+    
+            img_tk = ImageTk.PhotoImage(combined)
+            self.pdf_viewer_canvas.image = img_tk
+            self.pdf_viewer_canvas.create_image(0, 0, anchor="nw", image=img_tk)
+            self.pdf_viewer_canvas.config(scrollregion=(0, 0, max_width, total_height))
+    
+        except Exception as e:
+            messagebox.showerror(self.locale.get("error_loading_pdf", "Errore caricamento PDF"), str(e))
+
+
 
 def convert_pdf_to_images_fitz(pdf_path, dpi=150):
     """
@@ -2982,13 +3454,15 @@ def replace_pdf_with_images_fitz(pdf_path, image_paths):
             except:
                 pass
         else:
-            logging.warning("[RASTER] Nessuna immagine valida, PDF originale non modificato.")
+            # logging.warning("[RASTER] Nessuna immagine valida, PDF originale non modificato.")
+            logging.warning(locale.get("raster_no_valid_image_original_pdf_retained"))
     except Exception as e:
         logging.error(f"[RASTER] Errore durante la ricostruzione PDF da immagini: {e}")
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = TkinterDnD.Tk()
+#     root = tk.Tk()
     app = App(root)
     root.mainloop()# -*- coding: utf-8 -*-
 """
