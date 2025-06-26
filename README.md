@@ -104,7 +104,8 @@ Modifica
 📄 locales.json           → multilingual labels
 📄 webscraper_NEW20250529.py → Galora.versia main application
 📄 traduzioneJson.py      → JSON localization editor
-📄 webscraperRobot.mp4    → video shown during scraping
+📄 galora.versia.mp4      → video shown during scraping
+📄 galora_icon.png        → Galora icon
 📄 requirements.txt       → Python dependency list
 📁 resources/             → GUI screenshots
 ▶️ How to Use
