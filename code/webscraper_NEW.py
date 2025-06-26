@@ -1817,7 +1817,7 @@ class App:
     
         self.language_var = tk.StringVar(value=self.config.get("language", "en"))
         # Istanza senza canvas inizialmente
-        self.video_player = VideoPlayer(canvas=None, path="Galora.versia.mp4")
+        self.video_player = VideoPlayer(canvas=None, path="galora.versia.mp4")
 
         self.force_download_var = tk.BooleanVar(value=self.config.get("force_download", False))
         # Mappa modalità stringa → intero per il cursore
@@ -1972,7 +1972,7 @@ class App:
     
         # Immagine a sinistra
         try:
-            self.tab1_img = tk.PhotoImage(file="webscraper_icon.png")
+            self.tab1_img = tk.PhotoImage(file="galora_icon.png")
             self.tab1_img = self.tab1_img.subsample(8, 8)
             img_label = tk.Label(header_frame, image=self.tab1_img)
             img_label.pack(side="left", padx=10)
